@@ -1,5 +1,7 @@
 # @polivor/sdk
 
+[![ci](https://github.com/Polivor/polivor-sdk-typescript/actions/workflows/ci.yml/badge.svg)](https://github.com/Polivor/polivor-sdk-typescript/actions/workflows/ci.yml) [![license](https://img.shields.io/github/license/Polivor/polivor-sdk-typescript)](LICENSE)
+
 TypeScript client for the Polivor API, generated from its OpenAPI file. The package holds no keys or secrets: you bring your own API key.
 
 ```ts
@@ -19,3 +21,7 @@ const claims = await verifyAuthorization(data.authorization.jws, { audience: "yo
 ## Development
 
 `openapi/polivor.yaml` is a copy of the published API description. A scheduled workflow refreshes it and opens a pull request when it changes. Generated code is never edited by hand.
+
+## License
+
+Apache-2.0, see [LICENSE](LICENSE) and [NOTICE](NOTICE).
