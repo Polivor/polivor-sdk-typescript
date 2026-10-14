@@ -701,6 +701,16 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Jwks' }
 
+  /v1/ping:
+    get:
+      tags: [evidence]
+      operationId: ping
+      summary: Liveness check
+      security: []
+      responses:
+        '200':
+          description: Alive
+
   /v1/webhook:
     get:
       tags: [webhook]

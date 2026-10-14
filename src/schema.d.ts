@@ -478,6 +478,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Liveness check */
+        get: operations["ping"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/webhook": {
         parameters: {
             query?: never;
@@ -1847,6 +1864,24 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Jwks"];
                 };
+            };
+        };
+    };
+    ping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Alive */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
