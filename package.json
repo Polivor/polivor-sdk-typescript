@@ -1,0 +1,25 @@
+{
+  "name": "@polivor/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript client for the Polivor API, generated from the OpenAPI file.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "generate": "openapi-typescript openapi/polivor.yaml -o src/schema.d.ts",
+    "build": "npm run generate && tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "jose": "6.1.0",
+    "openapi-fetch": "0.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.1",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3"
+  }
+}

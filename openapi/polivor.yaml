@@ -1,0 +1,1306 @@
+openapi: 3.1.0
+info:
+  title: Polivor Authority API
+  version: 0.1.0
+  description: |
+    Per-action authority for AI agents acting on delegated financial authority.
+    Polivor decides, signs and records. It never initiates payments or holds funds.
+    Money is integer minor units plus ISO 4217 currency; there are no floats.
+servers:
+  - url: https://api.polivor.com
+  - url: https://api.staging.polivor.com
+security:
+  - apiKey: []
+tags:
+  - { name: mcp }
+  - { name: authorize }
+  - { name: authorization }
+  - { name: identity }
+  - { name: mandate }
+  - { name: beneficiary }
+  - { name: policy }
+  - { name: evidence }
+  - { name: keys }
+  - { name: webhook }
+
+paths:
+  /v1/authorize:
+    post:
+      tags: [authorize]
+      operationId: authorize
+      summary: Request authority for one action (role agent)
+      description: |
+        400 IDEMPOTENCY_KEY_REQUIRED when the header is missing. 409 IDEMPOTENCY_KEY_REUSED when the key was used with a different body
+        (or by another agent), and IDEMPOTENCY_KEY_EXPIRED once the 24 h retention is over. A replay returns the stored response unchanged.
+        REQUIRE_APPROVAL reserves no budget; budget is reserved when the approval is granted.
+      x-roles: [agent]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuthorizeRequest' }
+      responses:
+        '200':
+          description: ALLOW (with authorization) or DENY
+          headers:
+            Server-Timing:
+              description: Time the decision took inside the service, as `authorize;dur=<milliseconds>` (W3C Server-Timing). Lets a caller separate processing time from network time (NFR-01 is a server-side target).
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthorizeResponse' }
+        '202':
+          description: REQUIRE_APPROVAL, decision is pending
+          headers:
+            Server-Timing:
+              description: Time the decision took inside the service, as `authorize;dur=<milliseconds>` (W3C Server-Timing). Lets a caller separate processing time from network time (NFR-01 is a server-side target).
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthorizeResponse' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/Problem' }
+
+  /mcp:
+    post:
+      tags: [mcp]
+      operationId: mcpMessage
+      summary: Model Context Protocol server with the tools authorize and get_decision (role agent)
+      description: |
+        MCP over Streamable HTTP, answered as plain JSON (no event stream, no sessions): one JSON-RPC 2.0 message per POST. Supported methods:
+        `initialize`, `ping`, `tools/list` and `tools/call`; notifications get `202`. Protocol versions 2025-06-18, 2025-03-26 and 2024-11-05.
+        The tool `authorize` takes the fields of `AuthorizeRequest` plus a required `idempotency_key`; `get_decision` takes `decision_id`. A tool
+        result carries the same JSON as the REST response (as `structuredContent` and as text); a business error is a tool result with
+        `isError: true` holding a problem details object. Same API keys, roles and rate limits as `/v1`. Requests with an `Origin` header are
+        refused (MCP clients are programs, not web pages). `GET` is not supported (405).
+      x-roles: [agent]
+      parameters:
+        - { name: MCP-Protocol-Version, in: header, required: false, schema: { type: string, enum: ['2025-06-18', '2025-03-26', '2024-11-05'] }, description: Sent by clients after initialize }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JsonRpcMessage' }
+      responses:
+        '200':
+          description: A JSON-RPC response (a result, or an error object)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JsonRpcMessage' }
+        '202': { description: A notification was received (no response body) }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/Problem' }
+
+  /v1/simulate:
+    post:
+      tags: [authorize]
+      operationId: simulate
+      summary: Dry run of the same decision as authorize. No writes, no budget reserved, no authorization, no evidence (role admin)
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SimulateRequest' }
+      responses:
+        '200':
+          description: Simulated decision
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SimulateResponse' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+
+  /v1/decisions/{id}:
+    get:
+      tags: [authorize]
+      operationId: getDecision
+      summary: Decision status; authorization once approved (roles agent, admin)
+      x-roles: [agent, admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Decision
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DecisionStatus' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /v1/authorizations/{id}/execution:
+    post:
+      tags: [authorization]
+      operationId: reportExecution
+      summary: Enforcement point reports a terminal execution result (role enforcer)
+      description: |
+        One terminal report per authorization. 409 ALREADY_REPORTED for a second one, 410 REPORT_WINDOW_CLOSED more than 24 h after the authorization expired.
+        REJECTED and FAILED release the reserved budget; EXECUTED keeps it consumed.
+      x-roles: [enforcer]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExecutionReport' }
+      responses:
+        '200':
+          description: Recorded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthorizationStatus' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '410': { $ref: '#/components/responses/Problem' }
+
+  /v1/authorizations/{id}/not-executed:
+    post:
+      tags: [authorization]
+      operationId: markNotExecuted
+      summary: Release an unreported authorization and its reserved budget (role admin)
+      description: Only after the authorization has expired (409 AUTHORIZATION_STILL_VALID before), because until then the enforcement point could still use it.
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Released
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthorizationStatus' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /v1/principals:
+    post:
+      tags: [identity]
+      operationId: createPrincipal
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PrincipalCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Principal' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/agents:
+    get:
+      tags: [identity]
+      operationId: listAgents
+      x-roles: [admin]
+      responses:
+        '200':
+          description: Agents with their versions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Agent' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [identity]
+      operationId: createAgent
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AgentCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Agent' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/agents/{id}/versions:
+    post:
+      tags: [identity]
+      operationId: registerAgentVersion
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [version]
+              properties:
+                version: { type: string, minLength: 1, maxLength: 64 }
+      responses:
+        '201':
+          description: Registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Agent' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/agents/{id}/suspend:
+    post:
+      tags: [identity]
+      operationId: suspendAgent
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Suspended
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Agent' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /v1/mandates:
+    get:
+      tags: [mandate]
+      operationId: listMandates
+      x-roles: [admin]
+      responses:
+        '200':
+          description: Mandates
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Mandate' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [mandate]
+      operationId: createMandate
+      summary: Create a native Financial Mandate (validated against financial-mandate/v0)
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MandateBody' }
+      responses:
+        '201':
+          description: Created as DRAFT, version 1
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mandate' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/mandates/import/ap2:
+    post:
+      tags: [mandate]
+      operationId: importAp2Mandate
+      summary: Import an AP2 open payment mandate into a DRAFT native mandate (adapter; body at most 64 KB)
+      description: |
+        Accepts an AP2 v0.2 Open Payment Mandate (`vct` mandate.payment.open.1) as an SD-JWT signed ES256 by a key of a trusted issuer
+        (`POST /v1/trusted-issuers`). The signature, every disclosure and the expiry are checked. What AP2 states precisely is copied
+        (per-payment maximum as integer minor units and its currency, the validity window); everything else is listed in the report as
+        not enforced natively or as still to complete. Principal and agent come from the request.
+
+        **Constraints Polivor cannot enforce.** AP2 says a constraint a verifier does not understand must fail evaluation, and a native
+        mandate is looser than the credential wherever it cannot enforce one. So an import that carries payees, a budget, recurrence,
+        payment instruments, PISPs, a reference or a minimum amount is refused (422 AP2_UNENFORCED_CONSTRAINTS, one error per type) until the
+        request names each of them in `acknowledge_unenforced`; constraint types AP2 does not define at all are never imported
+        (422 AP2_UNKNOWN_CONSTRAINT). Issuer keys are the ones registered for the issuer plus, if it has a `jwks_url`, the set published
+        there at the time of the import (AP2_ISSUER_KEYS_UNAVAILABLE if that cannot be fetched). The DRAFT cannot be activated until a new
+        version with the missing fields is created (`POST /v1/mandates/{id}/versions`). The raw credential and its hash are kept.
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [credential, issuer_id, principal_id, agent_id]
+              properties:
+                credential: { type: string, maxLength: 65536, description: 'The SD-JWT: issuer-signed JWT, then each disclosure, each followed by ~' }
+                issuer_id: { $ref: '#/components/schemas/Uuid' }
+                principal_id: { $ref: '#/components/schemas/Uuid' }
+                agent_id: { $ref: '#/components/schemas/Uuid' }
+                allowed_agent_versions:
+                  type: array
+                  maxItems: 50
+                  items: { type: string, minLength: 1, maxLength: 64 }
+                acknowledge_unenforced:
+                  type: array
+                  maxItems: 20
+                  items: { type: string, maxLength: 100 }
+                  description: 'Constraint types the admin accepts not to have enforced natively, e.g. payment.allowed_payees'
+      responses:
+        '201':
+          description: DRAFT mandate and what was done with each part of the credential
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ap2ImportResult' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+
+  /v1/trusted-issuers:
+    get:
+      tags: [mandate]
+      operationId: listTrustedIssuers
+      x-roles: [admin]
+      responses:
+        '200':
+          description: Trusted issuers of this tenant
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TrustedIssuer' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [mandate]
+      operationId: registerTrustedIssuer
+      summary: Register an issuer whose AP2 credentials may be imported (public keys only)
+      description: |
+        Give the issuer's public P-256 keys (`jwks`), the HTTPS URL where it publishes them (`jwks_url`), or both. A URL is fetched when a
+        credential is imported and is never cached, so a rotated or withdrawn key takes effect immediately. The URL must be public (no
+        private or internal addresses), is not followed through redirects, and must serve at most 10 public keys, each with a kid.
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, format]
+              anyOf:
+                - required: [jwks]
+                - required: [jwks_url]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 200 }
+                format: { const: AP2 }
+                jwks: { $ref: '#/components/schemas/Jwks' }
+                jwks_url: { type: string, maxLength: 2048 }
+      responses:
+        '201':
+          description: Registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrustedIssuer' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+
+  /v1/mandates/{id}:
+    get:
+      tags: [mandate]
+      operationId: getMandate
+      summary: The version in force, or any other version with ?version=n (versions are immutable and stay readable)
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - { name: version, in: query, required: false, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: Mandate with all versions readable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mandate' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /v1/mandates/{id}/versions:
+    post:
+      tags: [mandate]
+      operationId: createMandateVersion
+      summary: Create version n+1 (versions are immutable)
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MandateBody' }
+      responses:
+        '201':
+          description: New version
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mandate' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/mandates/{id}/activate:
+    post:
+      tags: [mandate]
+      operationId: activateMandate
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { $ref: '#/components/responses/MandateOk' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+
+  /v1/mandates/{id}/suspend:
+    post:
+      tags: [mandate]
+      operationId: suspendMandate
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { $ref: '#/components/responses/MandateOk' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /v1/mandates/{id}/resume:
+    post:
+      tags: [mandate]
+      operationId: resumeMandate
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { $ref: '#/components/responses/MandateOk' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /v1/mandates/{id}/revoke:
+    post:
+      tags: [mandate]
+      operationId: revokeMandate
+      summary: Final; cannot be undone
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { $ref: '#/components/responses/MandateOk' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /v1/beneficiaries:
+    get:
+      tags: [beneficiary]
+      operationId: listBeneficiaries
+      x-roles: [admin]
+      responses:
+        '200':
+          description: Allowlist
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Beneficiary' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [beneficiary]
+      operationId: createBeneficiary
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BeneficiaryCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Beneficiary' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /v1/beneficiaries/{id}:
+    patch:
+      tags: [beneficiary]
+      operationId: updateBeneficiary
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BeneficiaryUpdate' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Beneficiary' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /v1/policies:
+    get:
+      tags: [policy]
+      operationId: listPolicies
+      x-roles: [admin]
+      responses:
+        '200':
+          description: Policy versions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PolicyVersion' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [policy]
+      operationId: createPolicy
+      summary: Create a DRAFT policy version from template parameters or raw Cedar; validated against the Cedar schema
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PolicyCreate' }
+      responses:
+        '201':
+          description: DRAFT version
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyVersion' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+
+  /v1/policies/{version}/publish:
+    post:
+      tags: [policy]
+      operationId: publishPolicy
+      summary: Publish; immutable afterwards. Rejected if a permit rule references signals
+      x-roles: [admin]
+      parameters:
+        - name: version
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Now the active version
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyVersion' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+
+  /v1/evidence:
+    get:
+      tags: [evidence]
+      operationId: listEvidence
+      x-roles: [admin]
+      parameters:
+        - { name: from_seq, in: query, schema: { type: integer, minimum: 0 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 1000, default: 100 } }
+      responses:
+        '200':
+          description: Evidence rows in sequence order
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/EvidenceRow' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+
+  /v1/evidence/export:
+    get:
+      tags: [evidence]
+      operationId: exportEvidence
+      summary: Bundle for a range - rows, JWS, chain hashes and JWKS - verifiable offline
+      x-roles: [admin]
+      parameters:
+        - { name: from_seq, in: query, schema: { type: integer, minimum: 0 } }
+        - { name: to_seq, in: query, schema: { type: integer, minimum: 0 } }
+      description: At most 10000 rows per export (422 RANGE_TOO_LARGE otherwise).
+      responses:
+        '200':
+          description: Export bundle
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EvidenceBundle' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+
+  /.well-known/jwks.json:
+    get:
+      tags: [evidence]
+      operationId: getJwks
+      summary: Public keys (authz-signing and evidence-signing, all versions)
+      security: []
+      responses:
+        '200':
+          description: JWKS
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Jwks' }
+
+  /v1/webhook:
+    get:
+      tags: [webhook]
+      operationId: getWebhook
+      summary: The tenant's webhook URL, if any (role admin)
+      x-roles: [admin]
+      responses:
+        '200':
+          description: Webhook status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookStatus' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+    put:
+      tags: [webhook]
+      operationId: setWebhook
+      summary: Set the webhook URL and create a new signing secret, shown once (role admin)
+      description: |
+        Events: `decision.resolved` (an approval ended: ALLOWED with the authorization, or DENIED with a reason), `authorization.reported`
+        (an execution report or an admin release) and `webhook.test`. Each delivery is `POST` with the JSON body
+        `{id, type, created_at, tenant_id, data}` and the headers `Polivor-Event-Id` and `Polivor-Signature: t=<unix seconds>,v1=<hex>`, where
+        v1 is HMAC-SHA256 of `<t>.<raw body>` with the secret. Reject deliveries whose `t` is far from your clock. Any 2xx is success; other
+        results are retried 5 times with backoff (1 min, 5 min, 15 min, 1 h, 6 h) and the same event ID. The URL must be HTTPS and public.
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebhookSet' }
+      responses:
+        '200':
+          description: Configured. The secret is not shown again; setting the URL again creates a new one.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookConfigured' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [webhook]
+      operationId: removeWebhook
+      summary: Stop sending events (role admin)
+      x-roles: [admin]
+      responses:
+        '204': { description: Removed or none was set }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+
+  /v1/keys:
+    get:
+      tags: [keys]
+      operationId: listApiKeys
+      summary: Keys of this tenant, active and revoked (never the secret)
+      x-roles: [admin]
+      responses:
+        '200':
+          description: Keys, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ApiKey' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [keys]
+      operationId: createApiKey
+      summary: Create an API key; the secret is returned once and stored hashed
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApiKeyCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiKeyCreated' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+
+  /v1/keys/{id}/revoke:
+    post:
+      tags: [keys]
+      operationId: revokeApiKey
+      summary: Revoke a key; takes effect on the next request (well within 5 s). Idempotent
+      description: The last active admin key cannot be revoked (409 LAST_ADMIN_KEY).
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '204': { description: Revoked }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: 'Key format pv_test_<prefix>_<secret>; roles admin, agent, enforcer'
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Uuid' }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Retained 24 h. Same key and body returns the same response; same key and different body is 409.
+      schema: { type: string, minLength: 1, maxLength: 128 }
+
+  responses:
+    Problem:
+      description: RFC 9457 problem details with a stable code
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    MandateOk:
+      description: Mandate after the transition
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Mandate' }
+
+  schemas:
+    WebhookSet:
+      type: object
+      additionalProperties: false
+      required: [url]
+      properties:
+        url: { type: string, maxLength: 2048, description: HTTPS, public address, no credentials }
+    WebhookStatus:
+      type: object
+      required: [configured]
+      properties:
+        configured: { type: boolean }
+        url: { type: [string, 'null'] }
+    WebhookConfigured:
+      type: object
+      required: [url, secret]
+      properties:
+        url: { type: string }
+        secret: { type: string, description: 'Shown once. Sign check: HMAC-SHA256(secret, "<t>.<raw body>")' }
+
+    JsonRpcMessage:
+      type: object
+      description: A JSON-RPC 2.0 request, notification, result or error object (https://www.jsonrpc.org/specification)
+      required: [jsonrpc]
+      properties:
+        jsonrpc: { const: '2.0' }
+        id: { type: [string, integer, 'null'] }
+        method: { type: string, examples: [initialize, tools/list, tools/call] }
+        params: { type: object, additionalProperties: true }
+        result: { type: object, additionalProperties: true }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: integer, examples: [-32700, -32600, -32601, -32602] }
+            message: { type: string }
+
+    Uuid: { type: string, format: uuid }
+    Currency: { type: string, pattern: '^[A-Z]{3}$' }
+    Country: { type: string, pattern: '^[A-Z]{2}$' }
+    Iban: { type: string, pattern: '^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$' }
+    MinorAmount:
+      type: integer
+      format: int64
+      minimum: 1
+      description: Integer minor units (cents); never a float
+
+    Problem:
+      type: object
+      required: [type, title, status, code]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        code:
+          type: string
+          description: |
+            Stable machine-readable code. Common ones: UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, MALFORMED_REQUEST, VALIDATION_FAILED, RATE_LIMITED,
+            IDEMPOTENCY_KEY_REQUIRED, IDEMPOTENCY_KEY_REUSED, IDEMPOTENCY_KEY_EXPIRED, ALREADY_REPORTED, REPORT_WINDOW_CLOSED, AUTHORIZATION_STILL_VALID,
+            MANDATE_INVALID, MANDATE_INCOMPLETE, MANDATE_NOT_ACTIVATABLE, MANDATE_NOT_ACTIVE, MANDATE_SUSPENDED, MANDATE_NOT_SUSPENDED, MANDATE_REVOKED,
+            NOTHING_TO_ACTIVATE, VERSION_EXISTS, UNKNOWN_PRINCIPAL, BENEFICIARY_EXISTS, POLICY_INVALID, POLICY_RETIRED, RANGE_TOO_LARGE,
+            LAST_ADMIN_KEY, INTERNAL
+        errors:
+          type: array
+          items:
+            type: object
+            required: [path, message]
+            properties:
+              path: { type: string, description: JSON Pointer to the offending field }
+              message: { type: string }
+              line: { type: integer, minimum: 1, description: 1-based line when the error points into a text such as a Cedar policy }
+              column: { type: integer, minimum: 1 }
+
+    Reason:
+      type: object
+      anyOf:
+        - required: [policy_id]
+        - required: [code]
+      properties:
+        policy_id: { type: string, description: The Cedar policy that decided }
+        code: { type: string, description: 'A pre-check or system reason, e.g. AGENT_SUSPENDED, MANDATE_REVOKED, NO_PERMIT, NO_ACTIVE_POLICY' }
+    Check:
+      type: object
+      required: [id, result]
+      properties:
+        id: { type: string, examples: [agent.active, beneficiary.iban_match] }
+        result: { type: string, enum: [pass, fail, satisfied, not_satisfied] }
+        detail: { type: object, additionalProperties: true }
+
+    Beneficiary_Ref:
+      type: object
+      description: Unknown fields are ignored. Everything decisive about the beneficiary is computed by Polivor from the allowlist and the IBAN.
+      required: [id, iban]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 100 }
+        iban: { type: string, minLength: 1, maxLength: 42 }
+        country: { type: string, description: Accepted for compatibility and never used }
+    Action:
+      type: object
+      description: Unknown fields are ignored and never influence the decision.
+      required: [type, amount_minor, currency, debtor_account, payment_type, beneficiary, reference]
+      properties:
+        type: { const: PayInvoice }
+        amount_minor: { $ref: '#/components/schemas/MinorAmount' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        debtor_account: { type: string, minLength: 15, maxLength: 42 }
+        payment_type: { type: string, enum: [SEPA_CT, SEPA_INST] }
+        beneficiary: { $ref: '#/components/schemas/Beneficiary_Ref' }
+        reference: { type: string, minLength: 1, maxLength: 140 }
+    Signals:
+      type: object
+      description: Agent-supplied; may only be used in forbid rules (signals tighten, never loosen). Unknown fields are ignored.
+      properties:
+        origin: { type: string, maxLength: 100 }
+        risk_flags:
+          type: array
+          maxItems: 50
+          items: { type: string, maxLength: 100 }
+
+    AuthorizeRequest:
+      type: object
+      description: Unknown fields are ignored. Flags such as iban_changed or beneficiary_allowlisted have no effect, Polivor computes those facts itself.
+      required: [agent_version, mandate_id, action]
+      properties:
+        agent_version: { type: string, minLength: 1, maxLength: 64 }
+        mandate_id: { $ref: '#/components/schemas/Uuid' }
+        action: { $ref: '#/components/schemas/Action' }
+        signals: { $ref: '#/components/schemas/Signals' }
+
+    SimulateRequest:
+      allOf:
+        - $ref: '#/components/schemas/AuthorizeRequest'
+        - type: object
+          properties:
+            policy_version: { type: integer, minimum: 1, description: 'Preview this policy version (a draft before publishing). Default: the active one.' }
+    SimulateResponse:
+      type: object
+      required: [simulated, outcome, reasons, checks, policy_version]
+      properties:
+        simulated: { const: true }
+        outcome: { type: string, enum: [ALLOW, DENY, REQUIRE_APPROVAL] }
+        reasons:
+          type: array
+          items: { $ref: '#/components/schemas/Reason' }
+        checks:
+          type: array
+          items: { $ref: '#/components/schemas/Check' }
+        mandate:
+          type: object
+          required: [id, version]
+          properties:
+            id: { $ref: '#/components/schemas/Uuid' }
+            version: { type: integer, minimum: 1 }
+        policy_version: { type: integer, minimum: 0, description: 0 when no policy applied }
+
+    AuthorizationArtifact:
+      type: object
+      required: [id, jws, expires_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        jws: { type: string, description: 'Compact JWS, typ polivor-authz+jwt, alg EdDSA' }
+        expires_at: { type: string, format: date-time }
+
+    AuthorizeResponse:
+      type: object
+      required: [decision_id, outcome, reasons, checks, policy_version, evidence]
+      properties:
+        decision_id: { $ref: '#/components/schemas/Uuid' }
+        simulated: { type: boolean }
+        outcome: { type: string, enum: [ALLOW, DENY, REQUIRE_APPROVAL] }
+        reasons:
+          type: array
+          items: { $ref: '#/components/schemas/Reason' }
+        checks:
+          type: array
+          items: { $ref: '#/components/schemas/Check' }
+        mandate:
+          type: object
+          required: [id, version]
+          properties:
+            id: { $ref: '#/components/schemas/Uuid' }
+            version: { type: integer, minimum: 1 }
+        policy_version: { type: integer, minimum: 0 }
+        evidence:
+          type: object
+          description: Absent on simulate
+          required: [id, seq]
+          properties:
+            id: { $ref: '#/components/schemas/Uuid' }
+            seq: { type: integer, minimum: 1 }
+        authorization:
+          $ref: '#/components/schemas/AuthorizationArtifact'
+
+    DecisionStatus:
+      type: object
+      required: [decision_id, outcome, status]
+      properties:
+        decision_id: { $ref: '#/components/schemas/Uuid' }
+        outcome: { type: string, enum: [ALLOW, DENY, REQUIRE_APPROVAL] }
+        status: { type: string, enum: [ALLOWED, DENIED, PENDING_APPROVAL] }
+        reasons:
+          type: array
+          items: { $ref: '#/components/schemas/Reason' }
+        authorization:
+          $ref: '#/components/schemas/AuthorizationArtifact'
+
+    ExecutionReport:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: { type: string, enum: [EXECUTED, REJECTED, FAILED] }
+        external_ref: { type: string, maxLength: 200 }
+    AuthorizationStatus:
+      type: object
+      required: [id, status]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        status: { type: string, enum: [ISSUED, EXECUTED, REJECTED, FAILED, NOT_EXECUTED] }
+        reported_at: { type: [string, 'null'], format: date-time }
+        external_ref: { type: [string, 'null'] }
+
+    PrincipalCreate:
+      type: object
+      additionalProperties: false
+      required: [legal_name, country]
+      properties:
+        legal_name: { type: string, minLength: 1, maxLength: 200 }
+        country: { $ref: '#/components/schemas/Country' }
+        lei: { type: string, pattern: '^[A-Z0-9]{20}$' }
+    Principal:
+      type: object
+      required: [id, legal_name, country]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        legal_name: { type: string, minLength: 1, maxLength: 200 }
+        country: { $ref: '#/components/schemas/Country' }
+        lei: { type: string, pattern: '^[A-Z0-9]{20}$' }
+
+    AgentCreate:
+      type: object
+      additionalProperties: false
+      required: [name, principal_id, owner_email, version]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        principal_id: { $ref: '#/components/schemas/Uuid' }
+        owner_email: { type: string, format: email }
+        version: { type: string, minLength: 1, maxLength: 64 }
+    Agent:
+      type: object
+      required: [id, name, principal_id, owner_email, status, versions]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        name: { type: string }
+        principal_id: { $ref: '#/components/schemas/Uuid' }
+        owner_email: { type: string, format: email }
+        status: { type: string, enum: [ACTIVE, SUSPENDED, RETIRED] }
+        versions:
+          type: array
+          items: { type: string }
+        agent_key:
+          type: string
+          description: Shown once, on agent creation only
+
+    MandateBody:
+      type: object
+      description: Native Financial Mandate body. The authoritative definition is docs/schema/financial-mandate.v0.json; validated against it on write. A DRAFT imported from AP2 holds only the mapped fields until a complete version is added.
+      required: [schema]
+      additionalProperties: true
+      properties:
+        schema: { const: polivor.financial-mandate/v0 }
+    TrustedIssuer:
+      type: object
+      required: [id, name, format, key_ids]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        name: { type: string }
+        format: { const: AP2 }
+        key_ids: { type: array, items: { type: string }, description: Ids of the keys registered by hand }
+        jwks_url: { type: [string, 'null'] }
+    Ap2ImportResult:
+      type: object
+      required: [mandate, report]
+      properties:
+        mandate: { $ref: '#/components/schemas/Mandate' }
+        report:
+          type: object
+          required: [mapped, unmapped, missing]
+          properties:
+            mapped: { type: array, items: { type: string }, description: Native fields filled from the credential }
+            unmapped: { type: array, items: { type: string }, description: Parts of the credential that a native mandate does not enforce }
+            missing: { type: array, items: { type: string }, description: Native fields still to be completed before activation }
+    Mandate:
+      type: object
+      required: [id, principal_id, agent_id, status, current_version, latest_version, version, source, body]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        principal_id: { $ref: '#/components/schemas/Uuid' }
+        agent_id: { $ref: '#/components/schemas/Uuid' }
+        status: { type: string, enum: [DRAFT, ACTIVE, SUSPENDED, REVOKED] }
+        current_version: { type: integer, minimum: 1, description: The version in force (a DRAFT's current_version is the one activation will put in force) }
+        latest_version: { type: integer, minimum: 1, description: Highest version created; takes effect only when activated }
+        version: { type: integer, minimum: 1, description: The version whose body is returned }
+        source: { type: string, enum: [NATIVE, AP2] }
+        body: { $ref: '#/components/schemas/MandateBody' }
+
+    BeneficiaryCreate:
+      type: object
+      additionalProperties: false
+      required: [external_id, name, iban, country]
+      properties:
+        external_id: { type: string, minLength: 1, maxLength: 100, description: 'The ID the agent sends in an authorize request; letters, digits and . _ : @ / -' }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        iban: { type: string, minLength: 15, maxLength: 42, description: Spaces and lowercase are accepted and normalised; the checksum is verified }
+        country: { $ref: '#/components/schemas/Country' }
+        status: { type: string, enum: [APPROVED, BLOCKED], default: APPROVED }
+    BeneficiaryUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        iban: { type: string, minLength: 15, maxLength: 42 }
+        country: { $ref: '#/components/schemas/Country' }
+        status: { type: string, enum: [APPROVED, BLOCKED] }
+    Beneficiary:
+      type: object
+      required: [id, external_id, name, iban, country, status]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        external_id: { type: string }
+        name: { type: string }
+        iban: { $ref: '#/components/schemas/Iban' }
+        country: { $ref: '#/components/schemas/Country' }
+        status: { type: string, enum: [APPROVED, BLOCKED] }
+
+    TemplateParams:
+      type: object
+      additionalProperties: false
+      description: |
+        Which rules the generated Cedar contains. The mandate's own limits, scope and threshold are facts in the Cedar context;
+        the template only chooses which rules apply. Omitted properties take their default.
+      properties:
+        scope: { type: boolean, default: true, description: 'permit requires debtor account, currency, beneficiary country and payment type inside the mandate scope' }
+        per_transaction_limit: { type: boolean, default: true }
+        daily_limit: { type: boolean, default: true }
+        monthly_limit: { type: boolean, default: true }
+        approval_threshold: { type: boolean, default: true, description: forbid with approval when the amount exceeds the mandate's threshold }
+        beneficiary_allowlist: { type: boolean, default: true, description: forbid with approval when the beneficiary is not on the allowlist }
+        blocked_beneficiary: { type: boolean, default: true, description: Hard deny for an explicitly blocked beneficiary; never payable by approval }
+        iban_mismatch: { type: boolean, default: true, description: forbid with approval when an allowlisted beneficiary's IBAN differs }
+        risk_signals:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          default: [prompt_injection_suspected]
+          items: { type: string, pattern: '^[a-z0-9_]{1,64}$' }
+          description: Agent-reported risk flags that escalate to approval. Empty turns the rule off. Signals only ever tighten.
+    PolicyCreate:
+      type: object
+      additionalProperties: false
+      oneOf:
+        - required: [template_params]
+        - required: [cedar]
+      properties:
+        template_params: { $ref: '#/components/schemas/TemplateParams' }
+        cedar: { type: string, maxLength: 65536, description: Raw Cedar. Validated against the Cedar schema; context.signals is rejected in permit rules. }
+    PolicyVersion:
+      type: object
+      required: [version, status, cedar, cedar_sha256]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        version: { type: integer, minimum: 1 }
+        status: { type: string, enum: [DRAFT, ACTIVE, RETIRED] }
+        cedar: { type: string }
+        cedar_sha256: { type: string, description: Hex }
+        template_params:
+          oneOf:
+            - $ref: '#/components/schemas/TemplateParams'
+            - { type: 'null' }
+        published_at: { type: [string, 'null'], format: date-time }
+
+    EvidenceRow:
+      type: object
+      required: [seq, event_type, subject_id, payload, prev_hash, hash, jws, key_version, created_at]
+      properties:
+        seq: { type: integer, minimum: 1 }
+        event_type: { type: string }
+        subject_id: { $ref: '#/components/schemas/Uuid' }
+        payload: { type: object, additionalProperties: true, description: RFC 8785 canonicalised before hashing }
+        prev_hash: { type: string, description: Hex }
+        hash: { type: string, description: Hex }
+        jws: { type: string }
+        key_version: { type: integer }
+        created_at: { type: string, format: date-time }
+    EvidenceBundle:
+      type: object
+      description: |
+        Everything needed to verify a range of evidence offline (cli/verify or the console verifier): rows with canonical payloads, hashes and
+        signatures, all public keys, and the authorization artifacts issued for the decisions in the range. A range that does not start at
+        row 1 verifies internally; its first row's prev_hash is the anchor to compare with the previous row you hold.
+      required: [format, tenant_id, exported_at, from_seq, to_seq, rows, jwks, authorizations]
+      properties:
+        format: { const: polivor.evidence-bundle/v1 }
+        tenant_id: { $ref: '#/components/schemas/Uuid' }
+        exported_at: { type: string, format: date-time }
+        from_seq: { type: integer, minimum: 0 }
+        to_seq: { type: integer, minimum: 0 }
+        rows:
+          type: array
+          items: { $ref: '#/components/schemas/EvidenceRow' }
+        jwks: { $ref: '#/components/schemas/Jwks' }
+        authorizations:
+          type: array
+          items:
+            type: object
+            required: [id, decision_id, jws, expires_at]
+            properties:
+              id: { $ref: '#/components/schemas/Uuid' }
+              decision_id: { $ref: '#/components/schemas/Uuid' }
+              jws: { type: string }
+              expires_at: { type: string, format: date-time }
+
+    Jwk:
+      type: object
+      required: [kty, crv, x, kid, use]
+      properties:
+        kty: { const: OKP }
+        crv: { const: Ed25519 }
+        x: { type: string }
+        kid: { type: string }
+        alg: { const: EdDSA }
+        use: { type: string, enum: [authz, evidence] }
+        revoked_at: { type: [string, 'null'], format: date-time }
+    Jwks:
+      type: object
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          items: { $ref: '#/components/schemas/Jwk' }
+
+    ApiKeyCreate:
+      type: object
+      additionalProperties: false
+      required: [role]
+      properties:
+        role: { type: string, enum: [admin, agent, enforcer] }
+        agent_id: { $ref: '#/components/schemas/Uuid' }
+      description: agent_id is required if and only if role is agent
+    ApiKey:
+      type: object
+      required: [id, role, prefix, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        role: { type: string, enum: [admin, agent, enforcer] }
+        agent_id: { type: [string, 'null'] }
+        prefix: { type: string, description: 'The non-secret part (pv_test_<prefix>) that identifies the key in logs' }
+        created_at: { type: string, format: date-time }
+        revoked_at: { type: [string, 'null'], format: date-time }
+    ApiKeyCreated:
+      type: object
+      required: [id, role, key]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        role: { type: string, enum: [admin, agent, enforcer] }
+        key: { type: string, description: Plaintext, shown once }
