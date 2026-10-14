@@ -3,12 +3,18 @@ on:
   schedule:
     - cron: '17 5 * * *'
   workflow_dispatch:
+    inputs:
+      spec_url:
+        description: Fetch the API description from this URL instead of the default (for testing this workflow)
+        required: false
 
 permissions:
   contents: read
 
 env:
-  SPEC_URL: https://api.staging.polivor.com/docs/openapi.yaml
+  DEFAULT_SPEC_URL: https://api.staging.polivor.com/docs/openapi.yaml
+  OASDIFF_IMAGE: tufin/oasdiff@sha256:3b14fe0112e5d1bf862f91ab234a4bcd161a3f399e98f8b0b665ce70857694ac
+  UPDATE_BRANCH: update-openapi-spec
 
 jobs:
   update:
@@ -17,17 +23,31 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
-      - run: curl --fail --silent --show-error --location "$SPEC_URL" --output openapi/polivor.yaml
+      - name: Download the API description
+        env:
+          SPEC_URL_OVERRIDE: ${{ inputs.spec_url }}
+        run: |
+          cp openapi/polivor.yaml "$RUNNER_TEMP/previous.yaml"
+          curl --fail --silent --show-error --location "${SPEC_URL_OVERRIDE:-$DEFAULT_SPEC_URL}" --output openapi/polivor.yaml
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run generate
+      - name: Describe the change (breaking or not, and the version it suggests)
+        run: ./scripts/describe-api-change.sh "$RUNNER_TEMP/previous.yaml" openapi/polivor.yaml "$RUNNER_TEMP/pull-request-body.md"
       - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        id: pull-request
         with:
-          branch: update-openapi-spec
+          branch: ${{ env.UPDATE_BRANCH }}
           commit-message: Update the generated client to the current API description
           title: Update the generated client to the current API description
-          body: The published OpenAPI file changed. This regenerates the client from it; review the diff for breaking changes before merging.
+          body-path: ${{ runner.temp }}/pull-request-body.md
+      - name: Run CI on the pull request branch (a pull request opened with the workflow token does not start it by itself)
+        if: steps.pull-request.outputs.pull-request-operation == 'created' || steps.pull-request.outputs.pull-request-operation == 'updated'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$UPDATE_BRANCH"
