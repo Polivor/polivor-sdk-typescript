@@ -6,12 +6,14 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "LICENSE",
+    "NOTICE"
   ],
   "scripts": {
     "generate": "openapi-typescript openapi/polivor.yaml -o src/schema.d.ts",
-    "build": "npm run generate && tsc -p tsconfig.json",
-    "test": "npm run build && node --test test/*.test.mjs"
+    "build": "npm run generate && tsc -p tsconfig.json && cp src/schema.d.ts dist/schema.d.ts",
+    "test": "npm run build && node --test test/*.test.mjs && ./scripts/check-package.sh"
   },
   "dependencies": {
     "jose": "6.1.0",
@@ -21,5 +23,18 @@
     "@types/node": "22.19.1",
     "openapi-typescript": "7.13.0",
     "typescript": "5.9.3"
+  },
+  "license": "Apache-2.0",
+  "homepage": "https://polivor.com/docs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Polivor/polivor-sdk-typescript.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Polivor/polivor-sdk-typescript/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }
