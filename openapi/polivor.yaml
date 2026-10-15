@@ -894,11 +894,8 @@ components:
         code:
           type: string
           description: |
-            Stable machine-readable code. Common ones: UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, MALFORMED_REQUEST, VALIDATION_FAILED, RATE_LIMITED,
-            IDEMPOTENCY_KEY_REQUIRED, IDEMPOTENCY_KEY_REUSED, IDEMPOTENCY_KEY_EXPIRED, ALREADY_REPORTED, REPORT_WINDOW_CLOSED, AUTHORIZATION_STILL_VALID,
-            MANDATE_INVALID, MANDATE_INCOMPLETE, MANDATE_NOT_ACTIVATABLE, MANDATE_NOT_ACTIVE, MANDATE_SUSPENDED, MANDATE_NOT_SUSPENDED, MANDATE_REVOKED,
-            NOTHING_TO_ACTIVATE, VERSION_EXISTS, UNKNOWN_PRINCIPAL, BENEFICIARY_EXISTS, POLICY_INVALID, POLICY_RETIRED, RANGE_TOO_LARGE,
-            LAST_ADMIN_KEY, INTERNAL
+            Stable machine-readable code. Match on it, not on `detail`. New codes can be added, so treat an unknown code by its HTTP status.
+            Every code with its status and meaning is in the error codes guide (/docs/errors-limits.html); a test keeps that list equal to the codes the API can return.
         errors:
           type: array
           items:
