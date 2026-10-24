@@ -18,6 +18,8 @@ export interface paths {
          * @description 400 IDEMPOTENCY_KEY_REQUIRED when the header is missing. 409 IDEMPOTENCY_KEY_REUSED when the key was used with a different body
          *     (or by another agent), and IDEMPOTENCY_KEY_EXPIRED once the 24 h retention is over. A replay returns the stored response unchanged.
          *     REQUIRE_APPROVAL reserves no budget; budget is reserved when the approval is granted.
+         *     The answer never says why (ADR-025): no reasons, no checks, no policy version. When nothing is allowed it carries a coarse `denial` with a code from a closed list,
+         *     a fixed sentence and `retryable`. A person sees the full explanation through the admin key, the console or the evidence.
          */
         post: operations["authorize"];
         delete?: never;
@@ -142,6 +144,208 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/persons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The person directory (owners and approvers); the only place with names and emails */
+        get: operations["listPersons"];
+        put?: never;
+        post: operations["createPerson"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/persons/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPerson"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/persons/{id}/erase": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Empties name, title, email and the approval comments of this person. Evidence is not touched and still verifies; it shows "identity erased". Idempotent. */
+        post: operations["erasePerson"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** People who can sign in to the console, with their role and status */
+        get: operations["listUsers"];
+        put?: never;
+        /** Invites a person of the directory as a user. The invitation becomes an active user on the first sign-in. */
+        post: operations["inviteUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getUser"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity-providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listIdentityProviders"];
+        put?: never;
+        /** Registers the customer's identity provider for a production tenant, OpenID Connect or SAML 2.0. For OpenID Connect the issuer's discovery document is fetched and checked and the client secret is sealed and never shown again. For SAML the metadata (pasted or fetched from a URL) is checked and the response lists what to enter at the provider. Each domain must be verified with a DNS TXT record before it routes sign-ins. */
+        post: operations["createIdentityProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity-providers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getIdentityProvider"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity-providers/{id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stops sign-ins through this provider and ends the console sessions of the people who signed in through it. Idempotent; one evidence row. */
+        post: operations["disableIdentityProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity-providers/{id}/domains/{domain}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Looks for the TXT record of the domain. A verified domain routes its email addresses to this provider; a domain is verified for one tenant only. */
+        post: operations["verifyIdentityProviderDomain"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/users/{id}/role": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Takes effect on the user's next request; one evidence row. The last active admin cannot be demoted (409 LAST_ADMIN_USER). */
+        post: operations["changeUserRole"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/users/{id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ends every session at once and suspends the agents the person owns (reason owner lost). Idempotent. The last active admin cannot be deactivated (409 LAST_ADMIN_USER). */
+        post: operations["deactivateUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/users/{id}/sessions/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ends every open console session of the user without deactivating them. */
+        post: operations["revokeUserSessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/agents": {
         parameters: {
             query?: never;
@@ -158,7 +362,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/agents/{id}/versions": {
+    "/v1/agents/{id}/owner": {
         parameters: {
             query?: never;
             header?: never;
@@ -167,7 +371,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["registerAgentVersion"];
+        /** Hands the agent to another person of the directory. One evidence row; a suspension is not lifted by it. */
+        post: operations["changeAgentOwner"];
         delete?: never;
         options?: never;
         head?: never;
@@ -183,7 +388,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Instant and idempotent; never changes the mandate */
         post: operations["suspendAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{id}/lift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Lifts a suspension; the same mandate version applies again */
+        post: operations["liftAgentSuspension"];
         delete?: never;
         options?: never;
         head?: never;
@@ -267,7 +490,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The version in force, or any other version with ?version=n (versions are immutable and stay readable) */
+        /** The version in force, or any other version with ?version=2.1 (versions are immutable and stay readable) */
         get: operations["getMandate"];
         put?: never;
         post?: never;
@@ -284,9 +507,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Every version, newest first, with whether it is in force and whether it was revoked */
+        get: operations["listMandateVersions"];
         put?: never;
-        /** Create version n+1 (versions are immutable) */
+        /** Create the next version. Only the validity dates changed gives the next minor version (2.1 to 2.2); anything else the next major (2.1 to 3.0). The same body is refused (409 MANDATE_UNCHANGED). Versions are immutable. */
         post: operations["createMandateVersion"];
         delete?: never;
         options?: never;
@@ -310,7 +534,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/mandates/{id}/suspend": {
+    "/v1/mandates/{id}/versions/{version}/revoke": {
         parameters: {
             query?: never;
             header?: never;
@@ -319,40 +543,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["suspendMandate"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/mandates/{id}/resume": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["resumeMandate"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/mandates/{id}/revoke": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Final; cannot be undone */
-        post: operations["revokeMandate"];
+        /** Final and instant for that version; idempotent. Revoking the version in force leaves the agent with no authority until a new version is approved. Older versions are never reinstated. */
+        post: operations["revokeMandateVersion"];
         delete?: never;
         options?: never;
         head?: never;
@@ -603,11 +795,8 @@ export interface components {
             status: number;
             detail?: string;
             /**
-             * @description Stable machine-readable code. Common ones: UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, MALFORMED_REQUEST, VALIDATION_FAILED, RATE_LIMITED,
-             *     IDEMPOTENCY_KEY_REQUIRED, IDEMPOTENCY_KEY_REUSED, IDEMPOTENCY_KEY_EXPIRED, ALREADY_REPORTED, REPORT_WINDOW_CLOSED, AUTHORIZATION_STILL_VALID,
-             *     MANDATE_INVALID, MANDATE_INCOMPLETE, MANDATE_NOT_ACTIVATABLE, MANDATE_NOT_ACTIVE, MANDATE_SUSPENDED, MANDATE_NOT_SUSPENDED, MANDATE_REVOKED,
-             *     NOTHING_TO_ACTIVATE, VERSION_EXISTS, UNKNOWN_PRINCIPAL, BENEFICIARY_EXISTS, POLICY_INVALID, POLICY_RETIRED, RANGE_TOO_LARGE,
-             *     LAST_ADMIN_KEY, INTERNAL
+             * @description Stable machine-readable code. Match on it, not on `detail`. New codes can be added, so treat an unknown code by its HTTP status.
+             *     Every code with its status and meaning is in the error codes guide (/docs/errors-limits.html); a test keeps that list equal to the codes the API can return.
              */
             code: string;
             errors?: {
@@ -663,12 +852,14 @@ export interface components {
         };
         /** @description Unknown fields are ignored. Flags such as iban_changed or beneficiary_allowlisted have no effect, Polivor computes those facts itself. */
         AuthorizeRequest: {
-            agent_version: string;
-            mandate_id: components["schemas"]["Uuid"];
+            /** @description Informational label of the agent build or model. Stored in the decision and the evidence; it never changes an outcome. */
+            agent_build?: string;
             action: components["schemas"]["Action"];
             signals?: components["schemas"]["Signals"];
         };
         SimulateRequest: components["schemas"]["AuthorizeRequest"] & {
+            /** @description The agent whose mandate is simulated */
+            agent_id: components["schemas"]["Uuid"];
             /** @description Preview this policy version (a draft before publishing). Default: the active one. */
             policy_version?: number;
         };
@@ -677,11 +868,12 @@ export interface components {
             simulated: true;
             /** @enum {string} */
             outcome: "ALLOW" | "DENY" | "REQUIRE_APPROVAL";
+            denial?: components["schemas"]["Denial"];
             reasons: components["schemas"]["Reason"][];
             checks: components["schemas"]["Check"][];
             mandate?: {
                 id: components["schemas"]["Uuid"];
-                version: number;
+                version: components["schemas"]["MandateVersion"];
             };
             /** @description 0 when no policy applied */
             policy_version: number;
@@ -693,32 +885,49 @@ export interface components {
             /** Format: date-time */
             expires_at: string;
         };
+        /**
+         * @description What an agent is told when nothing was allowed (ADR-025). The list of codes is closed and each sentence says what to do, never why.
+         *     `retryable` is true only when sending the same request again later, with nothing else changed, may succeed (UNAVAILABLE).
+         */
+        Denial: {
+            /** @enum {string} */
+            code: "AGENT_NOT_ENABLED" | "OUTSIDE_AUTHORITY" | "APPROVAL_REQUIRED" | "UNAVAILABLE" | "APPROVER_DENIED" | "APPROVAL_EXPIRED";
+            message: string;
+            retryable: boolean;
+        };
+        /** @description The answer to an agent. It has no reasons, no checks and no policy version (ADR-025); a person sees those through the admin key, the console or the evidence. */
         AuthorizeResponse: {
             decision_id: components["schemas"]["Uuid"];
-            simulated?: boolean;
             /** @enum {string} */
             outcome: "ALLOW" | "DENY" | "REQUIRE_APPROVAL";
-            reasons: components["schemas"]["Reason"][];
-            checks: components["schemas"]["Check"][];
+            denial?: components["schemas"]["Denial"];
             mandate?: {
                 id: components["schemas"]["Uuid"];
-                version: number;
+                version: components["schemas"]["MandateVersion"];
             };
-            policy_version: number;
-            /** @description Absent on simulate */
             evidence: {
                 id: components["schemas"]["Uuid"];
                 seq: number;
             };
             authorization?: components["schemas"]["AuthorizationArtifact"];
         };
+        /**
+         * @description Every caller gets the status and, when nothing is allowed, the coarse `denial`. Only an admin key also gets `reasons`, `checks` and `policy_version` (ADR-025);
+         *     an agent key never does.
+         */
         DecisionStatus: {
             decision_id: components["schemas"]["Uuid"];
             /** @enum {string} */
             outcome: "ALLOW" | "DENY" | "REQUIRE_APPROVAL";
             /** @enum {string} */
             status: "ALLOWED" | "DENIED" | "PENDING_APPROVAL";
+            denial?: components["schemas"]["Denial"];
+            /** @description Admin keys only */
             reasons?: components["schemas"]["Reason"][];
+            /** @description Admin keys only */
+            checks?: components["schemas"]["Check"][];
+            /** @description Admin keys only */
+            policy_version?: number;
             authorization?: components["schemas"]["AuthorizationArtifact"];
         };
         ExecutionReport: {
@@ -745,22 +954,110 @@ export interface components {
             country: components["schemas"]["Country"];
             lei?: string;
         };
+        UserInvite: {
+            person_id: components["schemas"]["Uuid"];
+            /** @enum {string} */
+            role: "VIEWER" | "APPROVER" | "ADMIN";
+        };
+        UserRole: {
+            /**
+             * @description VIEWER reads; APPROVER also approves mandate versions; ADMIN does everything
+             * @enum {string}
+             */
+            role: "VIEWER" | "APPROVER" | "ADMIN";
+        };
+        User: {
+            id: components["schemas"]["Uuid"];
+            person_id: components["schemas"]["Uuid"];
+            /** @enum {string} */
+            role: "VIEWER" | "APPROVER" | "ADMIN";
+            /** @enum {string} */
+            status: "INVITED" | "ACTIVE" | "DEACTIVATED";
+        };
+        IdentityProviderCreate: {
+            /**
+             * @default OIDC
+             * @enum {string}
+             */
+            protocol: "OIDC" | "SAML";
+            name: string;
+            /** @description OIDC only. The issuer URL; its /.well-known/openid-configuration must answer. */
+            issuer?: string;
+            /** @description OIDC only. */
+            client_id?: string;
+            /** @description OIDC only. */
+            client_secret?: string;
+            /** @description SAML only. The identity provider's metadata XML. Give this or saml_metadata_url. */
+            saml_metadata?: string;
+            /** @description SAML only. An https URL that serves the identity provider's metadata. */
+            saml_metadata_url?: string;
+            domains: string[];
+            /** @description Refuse a sign-in that does not show multi-factor authentication (amr for OpenID Connect */
+            require_mfa?: boolean;
+            /** @description A claim (OpenID Connect) or attribute (SAML) the sign-in must carry, for example tid for a Microsoft Entra tenant or hd for a Google Workspace domain. */
+            required_claim?: {
+                name: string;
+                value: string;
+            };
+        };
+        IdentityProvider: {
+            id: components["schemas"]["Uuid"];
+            /** @enum {string} */
+            protocol: "OIDC" | "SAML";
+            name: string;
+            /** @description The issuer (OpenID Connect) or the entity id (SAML). */
+            issuer: string;
+            /** @description OpenID Connect only. */
+            client_id?: string;
+            /** @description SAML only. What the customer enters at its identity provider. */
+            service_provider?: {
+                entity_id: string;
+                assertion_consumer_url: string;
+                metadata_url: string;
+            };
+            require_mfa: boolean;
+            required_claim?: {
+                name?: string;
+                value?: string;
+            };
+            /** @enum {string} */
+            status: "ACTIVE" | "DISABLED";
+            domains: {
+                domain: string;
+                verified: boolean;
+                /** @description Where to publish the TXT record. */
+                record_host: string;
+                /** @description What the TXT record must contain. */
+                record_value: string;
+            }[];
+        };
+        PersonCreate: {
+            name: string;
+            title?: string;
+            /** Format: email */
+            email: string;
+        };
+        Person: {
+            id: components["schemas"]["Uuid"];
+            version: number;
+            name?: string | null;
+            title?: string | null;
+            email?: string | null;
+            erased: boolean;
+        };
         AgentCreate: {
             name: string;
             principal_id: components["schemas"]["Uuid"];
-            /** Format: email */
-            owner_email: string;
-            version: string;
+            /** @description The accountable owner */
+            owner_person_id: components["schemas"]["Uuid"];
         };
         Agent: {
             id: components["schemas"]["Uuid"];
             name: string;
             principal_id: components["schemas"]["Uuid"];
-            /** Format: email */
-            owner_email: string;
+            owner_person_id: components["schemas"]["Uuid"];
             /** @enum {string} */
             status: "ACTIVE" | "SUSPENDED" | "RETIRED";
-            versions: string[];
             /** @description Shown once, on agent creation only */
             agent_key?: string;
         };
@@ -791,18 +1088,35 @@ export interface components {
                 missing: string[];
             };
         };
+        /** @description major.minor, for example 2.1. A major version changes the rules, a minor version only the validity dates. */
+        MandateVersion: string;
+        MandateVersionInfo: {
+            version: components["schemas"]["MandateVersion"];
+            live: boolean;
+            revoked: boolean;
+            /** Format: date-time */
+            valid_from: string;
+            /** Format: date-time */
+            valid_until: string;
+            approver_person_id: components["schemas"]["Uuid"] | null;
+        };
         Mandate: {
             id: components["schemas"]["Uuid"];
             principal_id: components["schemas"]["Uuid"];
             agent_id: components["schemas"]["Uuid"];
-            /** @enum {string} */
-            status: "DRAFT" | "ACTIVE" | "SUSPENDED" | "REVOKED";
+            /**
+             * @description REVOKED: the version in force was revoked and no version applies until a new one is approved
+             * @enum {string}
+             */
+            status: "DRAFT" | "ACTIVE" | "REVOKED";
             /** @description The version in force (a DRAFT's current_version is the one activation will put in force) */
-            current_version: number;
+            current_version: components["schemas"]["MandateVersion"];
             /** @description Highest version created; takes effect only when activated */
-            latest_version: number;
+            latest_version: components["schemas"]["MandateVersion"];
             /** @description The version whose body is returned */
-            version: number;
+            version: components["schemas"]["MandateVersion"];
+            /** @description Whether the returned version is revoked */
+            revoked: boolean;
             /** @enum {string} */
             source: "NATIVE" | "AP2";
             body: components["schemas"]["MandateBody"];
@@ -965,7 +1279,7 @@ export interface components {
             /** @enum {string} */
             role: "admin" | "agent" | "enforcer";
             agent_id?: string | null;
-            /** @description The non-secret part (pv_test_<prefix>) that identifies the key in logs */
+            /** @description The non-secret part (pv_test_<prefix> or pv_live_<prefix>) that identifies the key in logs */
             prefix: string;
             /** Format: date-time */
             created_at: string;
@@ -1234,6 +1548,395 @@ export interface operations {
             422: components["responses"]["Problem"];
         };
     };
+    listPersons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description People */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"][];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+        };
+    };
+    createPerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonCreate"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    getPerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The person */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
+    erasePerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Erased */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
+    listUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Users */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"][];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+        };
+    };
+    inviteUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserInvite"];
+            };
+        };
+        responses: {
+            /** @description Invited */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    getUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The user */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
+    listIdentityProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tenant's identity providers */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityProvider"][];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+        };
+    };
+    createIdentityProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentityProviderCreate"];
+            };
+        };
+        responses: {
+            /** @description Registered */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityProvider"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    getIdentityProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The identity provider */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityProvider"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
+    disableIdentityProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Disabled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityProvider"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
+    verifyIdentityProviderDomain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                domain: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The identity provider with the domain's state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityProvider"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    changeUserRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserRole"];
+            };
+        };
+        responses: {
+            /** @description Changed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    deactivateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deactivated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    revokeUserSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description How many sessions were open */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        revoked: number;
+                    };
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
     listAgents: {
         parameters: {
             query?: never;
@@ -1243,7 +1946,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Agents with their versions */
+            /** @description Agents */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1284,7 +1987,7 @@ export interface operations {
             422: components["responses"]["Problem"];
         };
     };
-    registerAgentVersion: {
+    changeAgentOwner: {
         parameters: {
             query?: never;
             header?: never;
@@ -1296,13 +1999,13 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    version: string;
+                    owner_person_id: components["schemas"]["Uuid"];
                 };
             };
         };
         responses: {
-            /** @description Registered */
-            201: {
+            /** @description The agent with its new owner */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1314,7 +2017,6 @@ export interface operations {
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
-            409: components["responses"]["Problem"];
             422: components["responses"]["Problem"];
         };
     };
@@ -1341,6 +2043,32 @@ export interface operations {
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+        };
+    };
+    liftAgentSuspension: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active again */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
         };
     };
     listMandates: {
@@ -1408,7 +2136,7 @@ export interface operations {
                     issuer_id: components["schemas"]["Uuid"];
                     principal_id: components["schemas"]["Uuid"];
                     agent_id: components["schemas"]["Uuid"];
-                    allowed_agent_versions?: string[];
+                    approver_person_id: components["schemas"]["Uuid"];
                     /** @description Constraint types the admin accepts not to have enforced natively, e.g. payment.allowed_payees */
                     acknowledge_unenforced?: string[];
                 };
@@ -1491,7 +2219,7 @@ export interface operations {
     getMandate: {
         parameters: {
             query?: {
-                version?: number;
+                version?: components["schemas"]["MandateVersion"];
             };
             header?: never;
             path: {
@@ -1508,6 +2236,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Mandate"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
+    listMandateVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Versions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MandateVersionInfo"][];
                 };
             };
             401: components["responses"]["Problem"];
@@ -1566,58 +2319,25 @@ export interface operations {
             422: components["responses"]["Problem"];
         };
     };
-    suspendMandate: {
+    revokeMandateVersion: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 id: components["parameters"]["Id"];
+                version: components["schemas"]["MandateVersion"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
             200: components["responses"]["MandateOk"];
+            400: components["responses"]["Problem"];
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
-        };
-    };
-    resumeMandate: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["Id"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: components["responses"]["MandateOk"];
-            401: components["responses"]["Problem"];
-            403: components["responses"]["Problem"];
-            404: components["responses"]["Problem"];
-            409: components["responses"]["Problem"];
-        };
-    };
-    revokeMandate: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["Id"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: components["responses"]["MandateOk"];
-            401: components["responses"]["Problem"];
-            403: components["responses"]["Problem"];
-            404: components["responses"]["Problem"];
-            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
         };
     };
     listBeneficiaries: {

@@ -33,6 +33,8 @@ paths:
         400 IDEMPOTENCY_KEY_REQUIRED when the header is missing. 409 IDEMPOTENCY_KEY_REUSED when the key was used with a different body
         (or by another agent), and IDEMPOTENCY_KEY_EXPIRED once the 24 h retention is over. A replay returns the stored response unchanged.
         REQUIRE_APPROVAL reserves no budget; budget is reserved when the approval is granted.
+        The answer never says why (ADR-025): no reasons, no checks, no policy version. When nothing is allowed it carries a coarse `denial` with a code from a closed list,
+        a fixed sentence and `retryable`. A person sees the full explanation through the admin key, the console or the evidence.
       x-roles: [agent]
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -208,6 +210,282 @@ paths:
         '401': { $ref: '#/components/responses/Problem' }
         '403': { $ref: '#/components/responses/Problem' }
         '422': { $ref: '#/components/responses/Problem' }
+  /v1/persons:
+    get:
+      tags: [identity]
+      operationId: listPersons
+      summary: The person directory (owners and approvers); the only place with names and emails
+      x-roles: [admin]
+      responses:
+        '200':
+          description: People
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Person' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [identity]
+      operationId: createPerson
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PersonCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Person' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/persons/{id}:
+    get:
+      tags: [identity]
+      operationId: getPerson
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: The person
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Person' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /v1/persons/{id}/erase:
+    post:
+      tags: [identity]
+      operationId: erasePerson
+      summary: Empties name, title, email and the approval comments of this person. Evidence is not touched and still verifies; it shows "identity erased". Idempotent.
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Erased
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Person' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /v1/users:
+    get:
+      tags: [identity]
+      operationId: listUsers
+      summary: People who can sign in to the console, with their role and status
+      x-roles: [admin]
+      responses:
+        '200':
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [identity]
+      operationId: inviteUser
+      summary: Invites a person of the directory as a user. The invitation becomes an active user on the first sign-in.
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserInvite' }
+      responses:
+        '201':
+          description: Invited
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/users/{id}:
+    get:
+      tags: [identity]
+      operationId: getUser
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: The user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /v1/identity-providers:
+    get:
+      tags: [identity]
+      operationId: listIdentityProviders
+      x-roles: [admin]
+      responses:
+        '200':
+          description: The tenant's identity providers
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/IdentityProvider' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [identity]
+      operationId: createIdentityProvider
+      summary: Registers the customer's identity provider for a production tenant, OpenID Connect or SAML 2.0. For OpenID Connect the issuer's discovery document is fetched and checked and the client secret is sealed and never shown again. For SAML the metadata (pasted or fetched from a URL) is checked and the response lists what to enter at the provider. Each domain must be verified with a DNS TXT record before it routes sign-ins.
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IdentityProviderCreate' }
+      responses:
+        '201':
+          description: Registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdentityProvider' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/identity-providers/{id}:
+    get:
+      tags: [identity]
+      operationId: getIdentityProvider
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: The identity provider
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdentityProvider' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /v1/identity-providers/{id}/disable:
+    post:
+      tags: [identity]
+      operationId: disableIdentityProvider
+      summary: Stops sign-ins through this provider and ends the console sessions of the people who signed in through it. Idempotent; one evidence row.
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Disabled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdentityProvider' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /v1/identity-providers/{id}/domains/{domain}/verify:
+    post:
+      tags: [identity]
+      operationId: verifyIdentityProviderDomain
+      summary: Looks for the TXT record of the domain. A verified domain routes its email addresses to this provider; a domain is verified for one tenant only.
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: domain
+          in: path
+          required: true
+          schema: { type: string, minLength: 1 }
+      responses:
+        '200':
+          description: The identity provider with the domain's state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdentityProvider' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /v1/users/{id}/role:
+    post:
+      tags: [identity]
+      operationId: changeUserRole
+      summary: Takes effect on the user's next request; one evidence row. The last active admin cannot be demoted (409 LAST_ADMIN_USER).
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserRole' }
+      responses:
+        '200':
+          description: Changed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/users/{id}/deactivate:
+    post:
+      tags: [identity]
+      operationId: deactivateUser
+      summary: Ends every session at once and suspends the agents the person owns (reason owner lost). Idempotent. The last active admin cannot be deactivated (409 LAST_ADMIN_USER).
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Deactivated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /v1/users/{id}/sessions/revoke:
+    post:
+      tags: [identity]
+      operationId: revokeUserSessions
+      summary: Ends every open console session of the user without deactivating them.
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: How many sessions were open
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked]
+                properties:
+                  revoked: { type: integer, minimum: 0 }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
   /v1/agents:
     get:
       tags: [identity]
@@ -215,7 +493,7 @@ paths:
       x-roles: [admin]
       responses:
         '200':
-          description: Agents with their versions
+          description: Agents
           content:
             application/json:
               schema:
@@ -242,10 +520,11 @@ paths:
         '401': { $ref: '#/components/responses/Problem' }
         '403': { $ref: '#/components/responses/Problem' }
         '422': { $ref: '#/components/responses/Problem' }
-  /v1/agents/{id}/versions:
+  /v1/agents/{id}/owner:
     post:
       tags: [identity]
-      operationId: registerAgentVersion
+      operationId: changeAgentOwner
+      summary: Hands the agent to another person of the directory. One evidence row; a suspension is not lifted by it.
       x-roles: [admin]
       parameters:
         - $ref: '#/components/parameters/Id'
@@ -256,12 +535,12 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [version]
+              required: [owner_person_id]
               properties:
-                version: { type: string, minLength: 1, maxLength: 64 }
+                owner_person_id: { $ref: '#/components/schemas/Uuid' }
       responses:
-        '201':
-          description: Registered
+        '200':
+          description: The agent with its new owner
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Agent' }
@@ -269,12 +548,12 @@ paths:
         '401': { $ref: '#/components/responses/Problem' }
         '403': { $ref: '#/components/responses/Problem' }
         '404': { $ref: '#/components/responses/Problem' }
-        '409': { $ref: '#/components/responses/Problem' }
         '422': { $ref: '#/components/responses/Problem' }
   /v1/agents/{id}/suspend:
     post:
       tags: [identity]
       operationId: suspendAgent
+      summary: Instant and idempotent; never changes the mandate
       x-roles: [admin]
       parameters:
         - $ref: '#/components/parameters/Id'
@@ -287,6 +566,24 @@ paths:
         '401': { $ref: '#/components/responses/Problem' }
         '403': { $ref: '#/components/responses/Problem' }
         '404': { $ref: '#/components/responses/Problem' }
+  /v1/agents/{id}/lift:
+    post:
+      tags: [identity]
+      operationId: liftAgentSuspension
+      summary: Lifts a suspension; the same mandate version applies again
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Active again
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Agent' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
 
   /v1/mandates:
     get:
@@ -349,16 +646,13 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [credential, issuer_id, principal_id, agent_id]
+              required: [credential, issuer_id, principal_id, agent_id, approver_person_id]
               properties:
                 credential: { type: string, maxLength: 65536, description: 'The SD-JWT: issuer-signed JWT, then each disclosure, each followed by ~' }
                 issuer_id: { $ref: '#/components/schemas/Uuid' }
                 principal_id: { $ref: '#/components/schemas/Uuid' }
                 agent_id: { $ref: '#/components/schemas/Uuid' }
-                allowed_agent_versions:
-                  type: array
-                  maxItems: 50
-                  items: { type: string, minLength: 1, maxLength: 64 }
+                approver_person_id: { $ref: '#/components/schemas/Uuid' }
                 acknowledge_unenforced:
                   type: array
                   maxItems: 20
@@ -432,11 +726,11 @@ paths:
     get:
       tags: [mandate]
       operationId: getMandate
-      summary: The version in force, or any other version with ?version=n (versions are immutable and stay readable)
+      summary: The version in force, or any other version with ?version=2.1 (versions are immutable and stay readable)
       x-roles: [admin]
       parameters:
         - $ref: '#/components/parameters/Id'
-        - { name: version, in: query, required: false, schema: { type: integer, minimum: 1 } }
+        - { name: version, in: query, required: false, schema: { $ref: '#/components/schemas/MandateVersion' } }
       responses:
         '200':
           description: Mandate with all versions readable
@@ -448,10 +742,28 @@ paths:
         '404': { $ref: '#/components/responses/Problem' }
 
   /v1/mandates/{id}/versions:
+    get:
+      tags: [mandate]
+      operationId: listMandateVersions
+      summary: Every version, newest first, with whether it is in force and whether it was revoked
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Versions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MandateVersionInfo' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
     post:
       tags: [mandate]
       operationId: createMandateVersion
-      summary: Create version n+1 (versions are immutable)
+      summary: Create the next version. Only the validity dates changed gives the next minor version (2.1 to 2.2); anything else the next major (2.1 to 3.0). The same body is refused (409 MANDATE_UNCHANGED). Versions are immutable.
       x-roles: [admin]
       parameters:
         - $ref: '#/components/parameters/Id'
@@ -487,48 +799,23 @@ paths:
         '409': { $ref: '#/components/responses/Problem' }
         '422': { $ref: '#/components/responses/Problem' }
 
-  /v1/mandates/{id}/suspend:
+  /v1/mandates/{id}/versions/{version}/revoke:
     post:
       tags: [mandate]
-      operationId: suspendMandate
+      operationId: revokeMandateVersion
+      summary: Final and instant for that version; idempotent. Revoking the version in force leaves the agent with no authority until a new version is approved. Older versions are never reinstated.
       x-roles: [admin]
       parameters:
         - $ref: '#/components/parameters/Id'
+        - { name: version, in: path, required: true, schema: { $ref: '#/components/schemas/MandateVersion' } }
       responses:
         '200': { $ref: '#/components/responses/MandateOk' }
+        '400': { $ref: '#/components/responses/Problem' }
         '401': { $ref: '#/components/responses/Problem' }
         '403': { $ref: '#/components/responses/Problem' }
         '404': { $ref: '#/components/responses/Problem' }
         '409': { $ref: '#/components/responses/Problem' }
-
-  /v1/mandates/{id}/resume:
-    post:
-      tags: [mandate]
-      operationId: resumeMandate
-      x-roles: [admin]
-      parameters:
-        - $ref: '#/components/parameters/Id'
-      responses:
-        '200': { $ref: '#/components/responses/MandateOk' }
-        '401': { $ref: '#/components/responses/Problem' }
-        '403': { $ref: '#/components/responses/Problem' }
-        '404': { $ref: '#/components/responses/Problem' }
-        '409': { $ref: '#/components/responses/Problem' }
-
-  /v1/mandates/{id}/revoke:
-    post:
-      tags: [mandate]
-      operationId: revokeMandate
-      summary: Final; cannot be undone
-      x-roles: [admin]
-      parameters:
-        - $ref: '#/components/parameters/Id'
-      responses:
-        '200': { $ref: '#/components/responses/MandateOk' }
-        '401': { $ref: '#/components/responses/Problem' }
-        '403': { $ref: '#/components/responses/Problem' }
-        '404': { $ref: '#/components/responses/Problem' }
-        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
 
   /v1/beneficiaries:
     get:
@@ -809,7 +1096,7 @@ components:
     apiKey:
       type: http
       scheme: bearer
-      description: 'Key format pv_test_<prefix>_<secret>; roles admin, agent, enforcer'
+      description: 'Key format pv_test_<prefix>_<secret> in the sandbox and pv_live_<prefix>_<secret> in production; a key of the other kind is refused with 401; roles admin, agent, enforcer'
 
   parameters:
     Id:
@@ -894,11 +1181,8 @@ components:
         code:
           type: string
           description: |
-            Stable machine-readable code. Common ones: UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, MALFORMED_REQUEST, VALIDATION_FAILED, RATE_LIMITED,
-            IDEMPOTENCY_KEY_REQUIRED, IDEMPOTENCY_KEY_REUSED, IDEMPOTENCY_KEY_EXPIRED, ALREADY_REPORTED, REPORT_WINDOW_CLOSED, AUTHORIZATION_STILL_VALID,
-            MANDATE_INVALID, MANDATE_INCOMPLETE, MANDATE_NOT_ACTIVATABLE, MANDATE_NOT_ACTIVE, MANDATE_SUSPENDED, MANDATE_NOT_SUSPENDED, MANDATE_REVOKED,
-            NOTHING_TO_ACTIVATE, VERSION_EXISTS, UNKNOWN_PRINCIPAL, BENEFICIARY_EXISTS, POLICY_INVALID, POLICY_RETIRED, RANGE_TOO_LARGE,
-            LAST_ADMIN_KEY, INTERNAL
+            Stable machine-readable code. Match on it, not on `detail`. New codes can be added, so treat an unknown code by its HTTP status.
+            Every code with its status and meaning is in the error codes guide (/docs/errors-limits.html); a test keeps that list equal to the codes the API can return.
         errors:
           type: array
           items:
@@ -959,10 +1243,9 @@ components:
     AuthorizeRequest:
       type: object
       description: Unknown fields are ignored. Flags such as iban_changed or beneficiary_allowlisted have no effect, Polivor computes those facts itself.
-      required: [agent_version, mandate_id, action]
+      required: [action]
       properties:
-        agent_version: { type: string, minLength: 1, maxLength: 64 }
-        mandate_id: { $ref: '#/components/schemas/Uuid' }
+        agent_build: { type: string, minLength: 1, maxLength: 64, description: 'Informational label of the agent build or model. Stored in the decision and the evidence; it never changes an outcome.' }
         action: { $ref: '#/components/schemas/Action' }
         signals: { $ref: '#/components/schemas/Signals' }
 
@@ -970,7 +1253,9 @@ components:
       allOf:
         - $ref: '#/components/schemas/AuthorizeRequest'
         - type: object
+          required: [agent_id]
           properties:
+            agent_id: { $ref: '#/components/schemas/Uuid', description: The agent whose mandate is simulated }
             policy_version: { type: integer, minimum: 1, description: 'Preview this policy version (a draft before publishing). Default: the active one.' }
     SimulateResponse:
       type: object
@@ -978,6 +1263,7 @@ components:
       properties:
         simulated: { const: true }
         outcome: { type: string, enum: [ALLOW, DENY, REQUIRE_APPROVAL] }
+        denial: { $ref: '#/components/schemas/Denial' }
         reasons:
           type: array
           items: { $ref: '#/components/schemas/Reason' }
@@ -989,7 +1275,7 @@ components:
           required: [id, version]
           properties:
             id: { $ref: '#/components/schemas/Uuid' }
-            version: { type: integer, minimum: 1 }
+            version: { $ref: '#/components/schemas/MandateVersion' }
         policy_version: { type: integer, minimum: 0, description: 0 when no policy applied }
 
     AuthorizationArtifact:
@@ -1000,29 +1286,34 @@ components:
         jws: { type: string, description: 'Compact JWS, typ polivor-authz+jwt, alg EdDSA' }
         expires_at: { type: string, format: date-time }
 
+    Denial:
+      type: object
+      description: |
+        What an agent is told when nothing was allowed (ADR-025). The list of codes is closed and each sentence says what to do, never why.
+        `retryable` is true only when sending the same request again later, with nothing else changed, may succeed (UNAVAILABLE).
+      required: [code, message, retryable]
+      properties:
+        code: { type: string, enum: [AGENT_NOT_ENABLED, OUTSIDE_AUTHORITY, APPROVAL_REQUIRED, UNAVAILABLE, APPROVER_DENIED, APPROVAL_EXPIRED] }
+        message: { type: string }
+        retryable: { type: boolean }
+
     AuthorizeResponse:
       type: object
-      required: [decision_id, outcome, reasons, checks, policy_version, evidence]
+      description: The answer to an agent. It has no reasons, no checks and no policy version (ADR-025); a person sees those through the admin key, the console or the evidence.
+      additionalProperties: false
+      required: [decision_id, outcome, evidence]
       properties:
         decision_id: { $ref: '#/components/schemas/Uuid' }
-        simulated: { type: boolean }
         outcome: { type: string, enum: [ALLOW, DENY, REQUIRE_APPROVAL] }
-        reasons:
-          type: array
-          items: { $ref: '#/components/schemas/Reason' }
-        checks:
-          type: array
-          items: { $ref: '#/components/schemas/Check' }
+        denial: { $ref: '#/components/schemas/Denial' }
         mandate:
           type: object
           required: [id, version]
           properties:
             id: { $ref: '#/components/schemas/Uuid' }
-            version: { type: integer, minimum: 1 }
-        policy_version: { type: integer, minimum: 0 }
+            version: { $ref: '#/components/schemas/MandateVersion' }
         evidence:
           type: object
-          description: Absent on simulate
           required: [id, seq]
           properties:
             id: { $ref: '#/components/schemas/Uuid' }
@@ -1032,14 +1323,24 @@ components:
 
     DecisionStatus:
       type: object
+      description: |
+        Every caller gets the status and, when nothing is allowed, the coarse `denial`. Only an admin key also gets `reasons`, `checks` and `policy_version` (ADR-025);
+        an agent key never does.
       required: [decision_id, outcome, status]
       properties:
         decision_id: { $ref: '#/components/schemas/Uuid' }
         outcome: { type: string, enum: [ALLOW, DENY, REQUIRE_APPROVAL] }
         status: { type: string, enum: [ALLOWED, DENIED, PENDING_APPROVAL] }
+        denial: { $ref: '#/components/schemas/Denial' }
         reasons:
           type: array
+          description: Admin keys only
           items: { $ref: '#/components/schemas/Reason' }
+        checks:
+          type: array
+          description: Admin keys only
+          items: { $ref: '#/components/schemas/Check' }
+        policy_version: { type: integer, minimum: 0, description: Admin keys only }
         authorization:
           $ref: '#/components/schemas/AuthorizationArtifact'
 
@@ -1076,27 +1377,122 @@ components:
         country: { $ref: '#/components/schemas/Country' }
         lei: { type: string, pattern: '^[A-Z0-9]{20}$' }
 
+    UserInvite:
+      type: object
+      additionalProperties: false
+      required: [person_id, role]
+      properties:
+        person_id: { $ref: '#/components/schemas/Uuid' }
+        role: { type: string, enum: [VIEWER, APPROVER, ADMIN] }
+    UserRole:
+      type: object
+      additionalProperties: false
+      required: [role]
+      properties:
+        role: { type: string, enum: [VIEWER, APPROVER, ADMIN], description: 'VIEWER reads; APPROVER also approves mandate versions; ADMIN does everything' }
+    User:
+      type: object
+      required: [id, person_id, role, status]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        person_id: { $ref: '#/components/schemas/Uuid' }
+        role: { type: string, enum: [VIEWER, APPROVER, ADMIN] }
+        status: { type: string, enum: [INVITED, ACTIVE, DEACTIVATED] }
+    IdentityProviderCreate:
+      type: object
+      additionalProperties: false
+      required: [name, domains]
+      properties:
+        protocol: { type: string, enum: [OIDC, SAML], default: OIDC }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        issuer: { type: string, maxLength: 2048, description: OIDC only. The issuer URL; its /.well-known/openid-configuration must answer. }
+        client_id: { type: string, minLength: 1, maxLength: 200, description: OIDC only. }
+        client_secret: { type: string, minLength: 1, maxLength: 512, description: OIDC only. }
+        saml_metadata: { type: string, maxLength: 262144, description: SAML only. The identity provider's metadata XML. Give this or saml_metadata_url. }
+        saml_metadata_url: { type: string, maxLength: 2048, description: SAML only. An https URL that serves the identity provider's metadata. }
+        domains:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items: { type: string, maxLength: 253 }
+        require_mfa: { type: boolean, description: Refuse a sign-in that does not show multi-factor authentication (amr for OpenID Connect, the authentication context for SAML). }
+        required_claim:
+          type: object
+          additionalProperties: false
+          required: [name, value]
+          description: A claim (OpenID Connect) or attribute (SAML) the sign-in must carry, for example tid for a Microsoft Entra tenant or hd for a Google Workspace domain.
+          properties:
+            name: { type: string, minLength: 1 }
+            value: { type: string, minLength: 1 }
+    IdentityProvider:
+      type: object
+      required: [id, name, issuer, require_mfa, status, domains, protocol]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        protocol: { type: string, enum: [OIDC, SAML] }
+        name: { type: string }
+        issuer: { type: string, description: The issuer (OpenID Connect) or the entity id (SAML). }
+        client_id: { type: string, description: OpenID Connect only. }
+        service_provider:
+          type: object
+          description: SAML only. What the customer enters at its identity provider.
+          required: [entity_id, assertion_consumer_url, metadata_url]
+          properties:
+            entity_id: { type: string }
+            assertion_consumer_url: { type: string }
+            metadata_url: { type: string }
+        require_mfa: { type: boolean }
+        required_claim:
+          type: object
+          properties:
+            name: { type: string }
+            value: { type: string }
+        status: { type: string, enum: [ACTIVE, DISABLED] }
+        domains:
+          type: array
+          items:
+            type: object
+            required: [domain, verified, record_host, record_value]
+            properties:
+              domain: { type: string }
+              verified: { type: boolean }
+              record_host: { type: string, description: Where to publish the TXT record. }
+              record_value: { type: string, description: What the TXT record must contain. }
+    PersonCreate:
+      type: object
+      additionalProperties: false
+      required: [name, email]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        email: { type: string, format: email, maxLength: 254 }
+    Person:
+      type: object
+      required: [id, version, erased]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        version: { type: integer, minimum: 1 }
+        name: { type: [string, 'null'] }
+        title: { type: [string, 'null'] }
+        email: { type: [string, 'null'] }
+        erased: { type: boolean }
     AgentCreate:
       type: object
       additionalProperties: false
-      required: [name, principal_id, owner_email, version]
+      required: [name, principal_id, owner_person_id]
       properties:
         name: { type: string, minLength: 1, maxLength: 200 }
         principal_id: { $ref: '#/components/schemas/Uuid' }
-        owner_email: { type: string, format: email }
-        version: { type: string, minLength: 1, maxLength: 64 }
+        owner_person_id: { $ref: '#/components/schemas/Uuid', description: The accountable owner, a person in the directory }
     Agent:
       type: object
-      required: [id, name, principal_id, owner_email, status, versions]
+      required: [id, name, principal_id, owner_person_id, status]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
         name: { type: string }
         principal_id: { $ref: '#/components/schemas/Uuid' }
-        owner_email: { type: string, format: email }
+        owner_person_id: { $ref: '#/components/schemas/Uuid' }
         status: { type: string, enum: [ACTIVE, SUSPENDED, RETIRED] }
-        versions:
-          type: array
-          items: { type: string }
         agent_key:
           type: string
           description: Shown once, on agent creation only
@@ -1129,17 +1525,32 @@ components:
             mapped: { type: array, items: { type: string }, description: Native fields filled from the credential }
             unmapped: { type: array, items: { type: string }, description: Parts of the credential that a native mandate does not enforce }
             missing: { type: array, items: { type: string }, description: Native fields still to be completed before activation }
+    MandateVersion:
+      type: string
+      pattern: '^[0-9]{1,6}\.[0-9]{1,6}$'
+      description: major.minor, for example 2.1. A major version changes the rules, a minor version only the validity dates.
+    MandateVersionInfo:
+      type: object
+      required: [version, live, revoked, valid_from, valid_until, approver_person_id]
+      properties:
+        version: { $ref: '#/components/schemas/MandateVersion' }
+        live: { type: boolean }
+        revoked: { type: boolean }
+        valid_from: { type: string, format: date-time }
+        valid_until: { type: string, format: date-time }
+        approver_person_id: { oneOf: [{ $ref: '#/components/schemas/Uuid' }, { type: 'null' }] }
     Mandate:
       type: object
-      required: [id, principal_id, agent_id, status, current_version, latest_version, version, source, body]
+      required: [id, principal_id, agent_id, status, current_version, latest_version, version, revoked, source, body]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
         principal_id: { $ref: '#/components/schemas/Uuid' }
         agent_id: { $ref: '#/components/schemas/Uuid' }
-        status: { type: string, enum: [DRAFT, ACTIVE, SUSPENDED, REVOKED] }
-        current_version: { type: integer, minimum: 1, description: The version in force (a DRAFT's current_version is the one activation will put in force) }
-        latest_version: { type: integer, minimum: 1, description: Highest version created; takes effect only when activated }
-        version: { type: integer, minimum: 1, description: The version whose body is returned }
+        status: { type: string, enum: [DRAFT, ACTIVE, REVOKED], description: 'REVOKED: the version in force was revoked and no version applies until a new one is approved' }
+        current_version: { $ref: '#/components/schemas/MandateVersion', description: The version in force (a DRAFT's current_version is the one activation will put in force) }
+        latest_version: { $ref: '#/components/schemas/MandateVersion', description: Highest version created; takes effect only when activated }
+        version: { $ref: '#/components/schemas/MandateVersion', description: The version whose body is returned }
+        revoked: { type: boolean, description: Whether the returned version is revoked }
         source: { type: string, enum: [NATIVE, AP2] }
         body: { $ref: '#/components/schemas/MandateBody' }
 
@@ -1294,7 +1705,7 @@ components:
         id: { $ref: '#/components/schemas/Uuid' }
         role: { type: string, enum: [admin, agent, enforcer] }
         agent_id: { type: [string, 'null'] }
-        prefix: { type: string, description: 'The non-secret part (pv_test_<prefix>) that identifies the key in logs' }
+        prefix: { type: string, description: 'The non-secret part (pv_test_<prefix> or pv_live_<prefix>) that identifies the key in logs' }
         created_at: { type: string, format: date-time }
         revoked_at: { type: [string, 'null'], format: date-time }
     ApiKeyCreated:
