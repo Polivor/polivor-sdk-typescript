@@ -16,7 +16,7 @@
     "test": "npm run build && node --test --experimental-test-coverage --test-coverage-include=dist/index.js --test-coverage-lines=90 --test-coverage-functions=90 --test-coverage-branches=80 test/*.test.mjs && ./scripts/check-package.sh"
   },
   "dependencies": {
-    "jose": "6.1.0",
+    "jose": "6.2.13",
     "openapi-fetch": "0.17.0"
   },
   "devDependencies": {
