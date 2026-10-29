@@ -18,7 +18,7 @@ export interface paths {
          * @description 400 IDEMPOTENCY_KEY_REQUIRED when the header is missing. 409 IDEMPOTENCY_KEY_REUSED when the key was used with a different body
          *     (or by another agent), and IDEMPOTENCY_KEY_EXPIRED once the 24 h retention is over. A replay returns the stored response unchanged.
          *     REQUIRE_APPROVAL reserves no budget; budget is reserved when the approval is granted.
-         *     The answer never says why (ADR-025): no reasons, no checks, no policy version. When nothing is allowed it carries a coarse `denial` with a code from a closed list,
+         *     The answer never says why: no reasons, no checks, no policy version. When nothing is allowed it carries a coarse `denial` with a code from a closed list,
          *     a fixed sentence and `retryable`. A person sees the full explanation through the admin key, the console or the evidence.
          */
         post: operations["authorize"];
@@ -886,7 +886,7 @@ export interface components {
             expires_at: string;
         };
         /**
-         * @description What an agent is told when nothing was allowed (ADR-025). The list of codes is closed and each sentence says what to do, never why.
+         * @description What an agent is told when nothing was allowed. The list of codes is closed and each sentence says what to do, never why.
          *     `retryable` is true only when sending the same request again later, with nothing else changed, may succeed (UNAVAILABLE).
          */
         Denial: {
@@ -895,7 +895,7 @@ export interface components {
             message: string;
             retryable: boolean;
         };
-        /** @description The answer to an agent. It has no reasons, no checks and no policy version (ADR-025); a person sees those through the admin key, the console or the evidence. */
+        /** @description The answer to an agent. It has no reasons, no checks and no policy version; a person sees those through the admin key, the console or the evidence. */
         AuthorizeResponse: {
             decision_id: components["schemas"]["Uuid"];
             /** @enum {string} */
@@ -912,7 +912,7 @@ export interface components {
             authorization?: components["schemas"]["AuthorizationArtifact"];
         };
         /**
-         * @description Every caller gets the status and, when nothing is allowed, the coarse `denial`. Only an admin key also gets `reasons`, `checks` and `policy_version` (ADR-025);
+         * @description Every caller gets the status and, when nothing is allowed, the coarse `denial`. Only an admin key also gets `reasons`, `checks` and `policy_version`;
          *     an agent key never does.
          */
         DecisionStatus: {
