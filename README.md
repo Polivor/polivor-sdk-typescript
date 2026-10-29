@@ -1,6 +1,6 @@
 # @polivor/sdk
 
-[![ci](https://github.com/Polivor/polivor-sdk-typescript/actions/workflows/ci.yml/badge.svg)](https://github.com/Polivor/polivor-sdk-typescript/actions/workflows/ci.yml) [![license](https://img.shields.io/github/license/Polivor/polivor-sdk-typescript)](LICENSE) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Polivor/polivor-sdk-typescript/badge)](https://scorecard.dev/viewer/?uri=github.com/Polivor/polivor-sdk-typescript)
+[![npm](https://img.shields.io/npm/v/@polivor/sdk)](https://www.npmjs.com/package/@polivor/sdk) [![types](https://img.shields.io/npm/types/@polivor/sdk)](https://www.npmjs.com/package/@polivor/sdk) [![ci](https://github.com/Polivor/polivor-sdk-typescript/actions/workflows/ci.yml/badge.svg)](https://github.com/Polivor/polivor-sdk-typescript/actions/workflows/ci.yml) [![license](https://img.shields.io/github/license/Polivor/polivor-sdk-typescript)](LICENSE) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Polivor/polivor-sdk-typescript/badge)](https://scorecard.dev/viewer/?uri=github.com/Polivor/polivor-sdk-typescript)
 
 TypeScript client for the Polivor API, generated from its OpenAPI file. The package holds no keys or secrets: you bring your own API key.
 
