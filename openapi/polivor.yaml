@@ -33,7 +33,7 @@ paths:
         400 IDEMPOTENCY_KEY_REQUIRED when the header is missing. 409 IDEMPOTENCY_KEY_REUSED when the key was used with a different body
         (or by another agent), and IDEMPOTENCY_KEY_EXPIRED once the 24 h retention is over. A replay returns the stored response unchanged.
         REQUIRE_APPROVAL reserves no budget; budget is reserved when the approval is granted.
-        The answer never says why (ADR-025): no reasons, no checks, no policy version. When nothing is allowed it carries a coarse `denial` with a code from a closed list,
+        The answer never says why: no reasons, no checks, no policy version. When nothing is allowed it carries a coarse `denial` with a code from a closed list,
         a fixed sentence and `retryable`. A person sees the full explanation through the admin key, the console or the evidence.
       x-roles: [agent]
       parameters:
@@ -1289,7 +1289,7 @@ components:
     Denial:
       type: object
       description: |
-        What an agent is told when nothing was allowed (ADR-025). The list of codes is closed and each sentence says what to do, never why.
+        What an agent is told when nothing was allowed. The list of codes is closed and each sentence says what to do, never why.
         `retryable` is true only when sending the same request again later, with nothing else changed, may succeed (UNAVAILABLE).
       required: [code, message, retryable]
       properties:
@@ -1299,7 +1299,7 @@ components:
 
     AuthorizeResponse:
       type: object
-      description: The answer to an agent. It has no reasons, no checks and no policy version (ADR-025); a person sees those through the admin key, the console or the evidence.
+      description: The answer to an agent. It has no reasons, no checks and no policy version; a person sees those through the admin key, the console or the evidence.
       additionalProperties: false
       required: [decision_id, outcome, evidence]
       properties:
@@ -1324,7 +1324,7 @@ components:
     DecisionStatus:
       type: object
       description: |
-        Every caller gets the status and, when nothing is allowed, the coarse `denial`. Only an admin key also gets `reasons`, `checks` and `policy_version` (ADR-025);
+        Every caller gets the status and, when nothing is allowed, the coarse `denial`. Only an admin key also gets `reasons`, `checks` and `policy_version`;
         an agent key never does.
       required: [decision_id, outcome, status]
       properties:
