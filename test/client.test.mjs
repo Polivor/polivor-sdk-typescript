@@ -30,7 +30,7 @@ test("posts a JSON body to the authorize endpoint", async () => {
 });
 
 import { generateKeyPair, SignJWT, createLocalJWKSet, exportJWK } from "jose";
-import { verifyAuthorization, API_KEY_ENVIRONMENT_VARIABLE, AUTHORIZATION_TOKEN_TYPE } from "../dist/index.js";
+import { verifyAuthorization, authorizationKeySet, API_KEY_ENVIRONMENT_VARIABLE, AUTHORIZATION_TOKEN_TYPE } from "../dist/index.js";
 
 test("reads the API key from the environment when none is passed", async () => {
   const { calls, fetchStub } = recordingFetch([]);
@@ -74,4 +74,49 @@ test("rejects a wrong audience, a wrong token type, an expired token and a chang
   const [header, , signature] = valid.token.split(".");
   const forgedPayload = Buffer.from(JSON.stringify({ action_sha256: "evil", aud: "hub" })).toString("base64url");
   await assert.rejects(verifyAuthorization(`${header}.${forgedPayload}.${signature}`, { audience: "hub", keySet: valid.keySet }));
+});
+
+async function platformKeys() {
+  const authz = await generateKeyPair("EdDSA", { extractable: true });
+  const evidence = await generateKeyPair("EdDSA", { extractable: true });
+  const entry = async (pair, kid, use) => ({ ...(await exportJWK(pair.publicKey)), kid, use, alg: "EdDSA" });
+  const jwks = { keys: [await entry(authz, "authz-signing-v1", "authz"), await entry(evidence, "evidence-signing-v1", "evidence")] };
+  const sign = (pair, kid) => new SignJWT({ action_sha256: "abc" }).setProtectedHeader({ alg: "EdDSA", typ: AUTHORIZATION_TOKEN_TYPE, kid })
+    .setAudience("hub").setIssuedAt().setExpirationTime("5m").sign(pair.privateKey);
+  return { jwks, authzToken: () => sign(authz, "authz-signing-v1"), evidenceToken: () => sign(evidence, "evidence-signing-v1") };
+}
+
+function keySetFetch(jwks, status = 200) {
+  const calls = [];
+  return { calls, fetchStub: async (url) => { calls.push(String(url)); return new Response(JSON.stringify(jwks), { status }); } };
+}
+
+test("verifies against the key set the platform publishes (keys labelled use authz and use evidence)", async () => {
+  const keys = await platformKeys();
+  const { calls, fetchStub } = keySetFetch(keys.jwks);
+  const claims = await verifyAuthorization(await keys.authzToken(), { audience: "hub", baseUrl: "https://example.test", fetch: fetchStub });
+  assert.equal(claims.action_sha256, "abc");
+  assert.deepEqual(calls, ["https://example.test/.well-known/jwks.json"]);
+});
+
+test("refuses a token signed by the evidence key, even though its key id is in the key set", async () => {
+  const keys = await platformKeys();
+  const { fetchStub } = keySetFetch(keys.jwks);
+  await assert.rejects(verifyAuthorization(await keys.evidenceToken(), { audience: "hub", baseUrl: "https://example.test", fetch: fetchStub }), /no applicable key/);
+});
+
+test("a reused key set fetches once and again only for an unknown key id after the cooldown", async () => {
+  const keys = await platformKeys();
+  const { calls, fetchStub } = keySetFetch(keys.jwks);
+  const keySet = authorizationKeySet("https://example.test", fetchStub);
+  for (let round = 0; round < 3; round += 1) await verifyAuthorization(await keys.authzToken(), { audience: "hub", keySet });
+  assert.equal(calls.length, 1);
+  await assert.rejects(verifyAuthorization(await keys.evidenceToken(), { audience: "hub", keySet }), /no applicable key/);
+  assert.equal(calls.length, 1, "an unknown id does not refetch inside the cooldown");
+});
+
+test("says so when the key set cannot be fetched", async () => {
+  const keys = await platformKeys();
+  const { fetchStub } = keySetFetch({}, 503);
+  await assert.rejects(verifyAuthorization(await keys.authzToken(), { audience: "hub", baseUrl: "https://example.test", fetch: fetchStub }), /key set unavailable: HTTP 503/);
 });
