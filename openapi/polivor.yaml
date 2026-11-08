@@ -383,11 +383,70 @@ paths:
         '401': { $ref: '#/components/responses/Problem' }
         '403': { $ref: '#/components/responses/Problem' }
         '404': { $ref: '#/components/responses/Problem' }
+  /v1/identity-providers/{id}/client-secret:
+    post:
+      tags: [identity]
+      operationId: replaceIdentityProviderClientSecret
+      summary: OpenID Connect only. Replaces the client secret of the provider in place, for example before it expires; people, domains and sessions are unchanged. One evidence row, without the secret.
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [client_secret]
+              properties:
+                client_secret: { type: string, minLength: 1, maxLength: 512 }
+                client_secret_expires_on: { type: string, format: date, description: Optional. The day the new secret stops working; the admins are warned before it. }
+      responses:
+        '200':
+          description: Replaced
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdentityProvider' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/identity-providers/{id}/saml-metadata:
+    post:
+      tags: [identity]
+      operationId: refreshIdentityProviderSamlMetadata
+      summary: SAML only. Replaces the provider's metadata in place, for example with a new signing certificate. The entity id must stay the same; a different one is a new provider. One evidence row.
+      x-roles: [admin]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                saml_metadata: { type: string, maxLength: 262144 }
+                saml_metadata_url: { type: string, maxLength: 2048 }
+      responses:
+        '200':
+          description: Refreshed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdentityProvider' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
   /v1/identity-providers/{id}/disable:
     post:
       tags: [identity]
       operationId: disableIdentityProvider
-      summary: Stops sign-ins through this provider and ends the console sessions of the people who signed in through it. Idempotent; one evidence row.
+      summary: Stops sign-ins through this provider. Its domains go to another active provider that lists them. Console sessions of its issuer end unless another active provider has the same issuer. Idempotent; one evidence row.
       x-roles: [admin]
       parameters:
         - $ref: '#/components/parameters/Id'
@@ -1408,6 +1467,7 @@ components:
         issuer: { type: string, maxLength: 2048, description: OIDC only. The issuer URL; its /.well-known/openid-configuration must answer. }
         client_id: { type: string, minLength: 1, maxLength: 200, description: OIDC only. }
         client_secret: { type: string, minLength: 1, maxLength: 512, description: OIDC only. }
+        client_secret_expires_on: { type: string, format: date, description: "OpenID Connect only, optional. The day the client secret stops working, if it does (Microsoft Entra secrets do). The admins are told 30 and 7 days before. For SAML the earliest signing certificate date is read from the metadata." }
         saml_metadata: { type: string, maxLength: 262144, description: SAML only. The identity provider's metadata XML. Give this or saml_metadata_url. }
         saml_metadata_url: { type: string, maxLength: 2048, description: SAML only. An https URL that serves the identity provider's metadata. }
         domains:
@@ -1416,6 +1476,7 @@ components:
           maxItems: 10
           items: { type: string, maxLength: 253 }
         require_mfa: { type: boolean, description: Refuse a sign-in that does not show multi-factor authentication (amr for OpenID Connect, the authentication context for SAML). }
+        require_confirmed_email: { type: boolean, description: "OpenID Connect only. Refuse a sign-in whose token does not say email_verified is true. Off by default: a missing claim is accepted and an explicit false is refused. Always on for a provider shared by many organisations (Google accounts, Microsoft common, organizations or consumers) unless a required claim is set." }
         required_claim:
           type: object
           additionalProperties: false
@@ -1426,7 +1487,7 @@ components:
             value: { type: string, minLength: 1 }
     IdentityProvider:
       type: object
-      required: [id, name, issuer, require_mfa, status, domains, protocol]
+      required: [id, name, issuer, require_mfa, require_confirmed_email, status, domains, protocol, warnings]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
         protocol: { type: string, enum: [OIDC, SAML] }
@@ -1442,12 +1503,23 @@ components:
             assertion_consumer_url: { type: string }
             metadata_url: { type: string }
         require_mfa: { type: boolean }
+        require_confirmed_email: { type: boolean }
+        credential_expires_at: { type: [string, 'null'], format: date-time, description: When the client secret (as the admin gave it) or the earliest SAML signing certificate expires; null when not known. }
+        warnings:
+          type: array
+          description: What the provider's own description says about the settings chosen, for example that it does not list the email claim. Only on the response that creates the provider; never blocking.
+          items:
+            type: object
+            required: [code, message]
+            properties:
+              code: { type: string }
+              message: { type: string }
         required_claim:
           type: object
           properties:
             name: { type: string }
             value: { type: string }
-        status: { type: string, enum: [ACTIVE, DISABLED] }
+        status: { type: string, enum: [PENDING, ACTIVE, DISABLED], description: "A new provider is PENDING: it routes nobody until an admin signs in once through it as a test, which makes it ACTIVE." }
         domains:
           type: array
           items:

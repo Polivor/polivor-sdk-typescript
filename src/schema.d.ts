@@ -261,6 +261,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/identity-providers/{id}/client-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** OpenID Connect only. Replaces the client secret of the provider in place, for example before it expires; people, domains and sessions are unchanged. One evidence row, without the secret. */
+        post: operations["replaceIdentityProviderClientSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity-providers/{id}/saml-metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** SAML only. Replaces the provider's metadata in place, for example with a new signing certificate. The entity id must stay the same; a different one is a new provider. One evidence row. */
+        post: operations["refreshIdentityProviderSamlMetadata"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/identity-providers/{id}/disable": {
         parameters: {
             query?: never;
@@ -270,7 +304,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Stops sign-ins through this provider and ends the console sessions of the people who signed in through it. Idempotent; one evidence row. */
+        /** Stops sign-ins through this provider. Its domains go to another active provider that lists them. Console sessions of its issuer end unless another active provider has the same issuer. Idempotent; one evidence row. */
         post: operations["disableIdentityProvider"];
         delete?: never;
         options?: never;
@@ -987,6 +1021,11 @@ export interface components {
             client_id?: string;
             /** @description OIDC only. */
             client_secret?: string;
+            /**
+             * Format: date
+             * @description OpenID Connect only, optional. The day the client secret stops working, if it does (Microsoft Entra secrets do). The admins are told 30 and 7 days before. For SAML the earliest signing certificate date is read from the metadata.
+             */
+            client_secret_expires_on?: string;
             /** @description SAML only. The identity provider's metadata XML. Give this or saml_metadata_url. */
             saml_metadata?: string;
             /** @description SAML only. An https URL that serves the identity provider's metadata. */
@@ -994,6 +1033,8 @@ export interface components {
             domains: string[];
             /** @description Refuse a sign-in that does not show multi-factor authentication (amr for OpenID Connect */
             require_mfa?: boolean;
+            /** @description OpenID Connect only. Refuse a sign-in whose token does not say email_verified is true. Off by default: a missing claim is accepted and an explicit false is refused. Always on for a provider shared by many organisations (Google accounts, Microsoft common, organizations or consumers) unless a required claim is set. */
+            require_confirmed_email?: boolean;
             /** @description A claim (OpenID Connect) or attribute (SAML) the sign-in must carry, for example tid for a Microsoft Entra tenant or hd for a Google Workspace domain. */
             required_claim?: {
                 name: string;
@@ -1016,12 +1057,26 @@ export interface components {
                 metadata_url: string;
             };
             require_mfa: boolean;
+            require_confirmed_email: boolean;
+            /**
+             * Format: date-time
+             * @description When the client secret (as the admin gave it) or the earliest SAML signing certificate expires; null when not known.
+             */
+            credential_expires_at?: string | null;
+            /** @description What the provider's own description says about the settings chosen, for example that it does not list the email claim. Only on the response that creates the provider; never blocking. */
+            warnings: {
+                code: string;
+                message: string;
+            }[];
             required_claim?: {
                 name?: string;
                 value?: string;
             };
-            /** @enum {string} */
-            status: "ACTIVE" | "DISABLED";
+            /**
+             * @description A new provider is PENDING: it routes nobody until an admin signs in once through it as a test, which makes it ACTIVE.
+             * @enum {string}
+             */
+            status: "PENDING" | "ACTIVE" | "DISABLED";
             domains: {
                 domain: string;
                 verified: boolean;
@@ -1798,6 +1853,78 @@ export interface operations {
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+        };
+    };
+    replaceIdentityProviderClientSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    client_secret: string;
+                    /**
+                     * Format: date
+                     * @description Optional. The day the new secret stops working; the admins are warned before it.
+                     */
+                    client_secret_expires_on?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Replaced */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityProvider"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    refreshIdentityProviderSamlMetadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    saml_metadata?: string;
+                    saml_metadata_url?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Refreshed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityProvider"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
         };
     };
     disableIdentityProvider: {
