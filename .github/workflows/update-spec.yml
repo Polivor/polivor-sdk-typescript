@@ -39,7 +39,7 @@ jobs:
       - run: npm run generate
       - name: Describe the change (breaking or not, and the version it suggests)
         run: ./scripts/describe-api-change.sh "$RUNNER_TEMP/previous.yaml" openapi/polivor.yaml "$RUNNER_TEMP/pull-request-body.md"
-      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+      - uses: peter-evans/create-pull-request@15733dbdfeedb4f7fdb73d13c6f5ac83b710fab8 # v8.1.2
         id: pull-request
         with:
           branch: ${{ env.UPDATE_BRANCH }}
